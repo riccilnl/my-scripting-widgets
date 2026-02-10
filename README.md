@@ -28,31 +28,21 @@ Scripting App 小组件集合
 
 ## 快速安装
 
-点击以下链接直接下载安装：
+点击下方链接直接下载安装：
 
+- [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
 - [IP检测](https://github.com/riccilnl/my-scripting-widgets/raw/main/IP%E6%A3%80%E6%B5%8B.scripting)
 - [新浪美股](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E6%96%B0%E6%B5%AA%E7%BE%8E%E8%82%A1.scripting)
-- [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
 
-> 点击链接后，在 Safari 中打开并选择 "在 Scripting 中打开" 即可安装。
+**安装步骤：**
+1. 点击上方链接
+2. 在 Safari 中打开链接
+3. 点击 "在 Scripting 中打开"
+4. 自动导入完成
+
+或者复制链接地址，在 Scripting App 中点击 "+" → "从 GitHub 安装"，粘贴链接即可。
 
 <!-- INSTALL_LINKS_END -->
-
-## 安装方法
-
-### 方法一：直接下载安装（推荐）
-点击上方的"快速安装"链接直接下载安装。
-
-### 方法二：从 GitHub 安装
-1. 安装 [Scripting App](https://apps.apple.com/app/scripting/)
-2. 在 Scripting App 中点击 "+" → "从 GitHub 安装"
-3. 输入仓库地址：`https://github.com/riccilnl/my-scripting-widgets`
-4. 选择要安装的小组件
-
-## 文件说明
-
-- `.scripting` 文件：打包后的小组件（用于安装）
-- `source/` 目录：源代码（用于开发和参考）
 
 ## 更新日志
 
