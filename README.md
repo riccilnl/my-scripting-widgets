@@ -30,9 +30,9 @@ Scripting App 小组件集合
 
 点击下方链接直接下载安装：
 
-- [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
 - [IP检测](https://github.com/riccilnl/my-scripting-widgets/raw/main/IP%E6%A3%80%E6%B5%8B.scripting)
 - [新浪美股](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E6%96%B0%E6%B5%AA%E7%BE%8E%E8%82%A1.scripting)
+- [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
 
 **安装步骤：**
 1. 点击上方链接
