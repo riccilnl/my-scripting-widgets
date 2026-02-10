@@ -24,12 +24,24 @@ Scripting App 小组件集合
 - 红涨绿跌渐变背景
 - 自动刷新缓存
 
+<!-- INSTALL_LINKS_START -->
+
+## 快速安装
+
+点击以下链接直接下载安装：
+
+- [IP检测](https://github.com/riccilnl/my-scripting-widgets/raw/main/IP%E6%A3%80%E6%B5%8B.scripting)
+- [新浪美股](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E6%96%B0%E6%B5%AA%E7%BE%8E%E8%82%A1.scripting)
+- [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
+
+> 点击链接后，在 Safari 中打开并选择 "在 Scripting 中打开" 即可安装。
+
+<!-- INSTALL_LINKS_END -->
+
 ## 安装方法
 
 ### 方法一：直接下载安装（推荐）
-1. 下载对应的 `.scripting` 文件
-2. 在 Scripting App 中点击 "+" → "导入"
-3. 选择下载的 `.scripting` 文件即可安装
+点击上方的"快速安装"链接直接下载安装。
 
 ### 方法二：从 GitHub 安装
 1. 安装 [Scripting App](https://apps.apple.com/app/scripting/)
