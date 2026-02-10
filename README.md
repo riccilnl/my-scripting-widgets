@@ -28,7 +28,7 @@ Scripting App 小组件集合
 
 1. 安装 [Scripting App](https://apps.apple.com/app/scripting/id...)
 2. 在 Scripting App 中点击 "+" → "从 GitHub 安装"
-3. 输入仓库地址：`https://github.com/riccilnl/my-scripting-widgets-`
+3. 输入仓库地址：`https://github.com/riccilnl/my-scripting-widgets`
 4. 选择要安装的小组件
 
 ## 更新日志
