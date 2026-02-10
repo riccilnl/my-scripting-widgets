@@ -1,0 +1,14 @@
+{
+  "name": "新浪美股",
+  "version": "1.0.0",
+  "main": "widget.tsx",
+  "author": "riccilnl",
+  "description": "实时美股行情小组件，支持多股显示、价格区间条、涨跌幅渐变背景",
+  "homepage": "https://github.com/riccilnl/my-scripting-widgets-",
+  "icon": "chart.line.uptrend.xyaxis",
+  "color": "rgba(255, 59, 48, 1)",
+  "runInApp": false,
+  "remoteResource": null,
+  "intentInputTypes": [],
+  "contributors": []
+}

@@ -1,0 +1,14 @@
+{
+  "name": "IP检测",
+  "version": "1.0.0",
+  "main": "widget.tsx",
+  "author": "riccilnl",
+  "description": "智能IP检测小组件，支持VPN/代理状态检测、风险评分、国旗显示",
+  "homepage": "https://github.com/riccilnl/my-scripting-widgets-",
+  "icon": "antenna.radiowaves.left.and.right",
+  "color": "rgba(174, 109, 216, 1)",
+  "runInApp": false,
+  "remoteResource": null,
+  "intentInputTypes": [],
+  "contributors": []
+}
