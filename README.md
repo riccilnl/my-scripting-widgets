@@ -34,7 +34,6 @@ Scripting App 小组件集合
 - [新浪美股](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E6%96%B0%E6%B5%AA%E7%BE%8E%E8%82%A1.scripting)
 - [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
 - [金投行情](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E9%87%91%E6%8A%95%E8%A1%8C%E6%83%85.scripting)
-- [金投金价](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E9%87%91%E6%8A%95%E9%87%91%E4%BB%B7.scripting)
 
 **安装步骤：**
 1. 点击上方链接
