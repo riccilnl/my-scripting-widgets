@@ -38,6 +38,7 @@ Scripting App 小组件集合
 点击下方链接直接下载安装：
 
 - [IP检测](https://github.com/riccilnl/my-scripting-widgets/raw/main/IP%E6%A3%80%E6%B5%8B.scripting)
+- [Navidrome播放器](https://github.com/riccilnl/my-scripting-widgets/raw/main/Navidrome%E6%92%AD%E6%94%BE%E5%99%A8.scripting)
 - [新浪美股](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E6%96%B0%E6%B5%AA%E7%BE%8E%E8%82%A1.scripting)
 - [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
 - [金投行情](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E9%87%91%E6%8A%95%E8%A1%8C%E6%83%85.scripting)
