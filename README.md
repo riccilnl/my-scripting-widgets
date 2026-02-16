@@ -31,6 +31,24 @@ Scripting App 小组件集合
 - 自动刷新间隔设置
 - 实时行情与涨跌显示
 
+## 发布脚本说明
+
+项目根目录提供了自动打包发布脚本：`/Volumes/Data/Work/scripting/push_and_deploy.sh`。
+
+- 作用：按选择打包组件为 `.scripting` 文件、更新本仓库安装链接，并可自动提交推送。
+- 支持模式：
+  - 打包全部组件
+  - 打包指定组件（可多选）
+  - 仅打包有修改的组件
+
+使用方式：
+
+```bash
+bash /Volumes/Data/Work/scripting/push_and_deploy.sh
+```
+
+按提示选择组件后脚本会完成打包和发布流程。
+
 <!-- INSTALL_LINKS_START -->
 
 ## 快速安装
