@@ -1,0 +1,25 @@
+{
+  "name": "rime输入法",
+  "version": "0.3.26",
+  "description": "Skin switching: adds persistent skin selection in settings and resolves the selected skin at keyboard startup for both visuals and layout geometry.",
+  "author": {
+    "name": "rime输入法",
+    "email": null,
+    "homepage": null
+  },
+  "entry": "index.tsx",
+  "runInApp": false,
+  "icon": "keyboard.fill",
+  "color": "rgba(0, 0, 0, 1)",
+  "permissions": null,
+  "intentInputTypes": [],
+  "contributors": [],
+  "localizedNames": {
+    "zh": "rime输入法",
+    "en": "Rime Input Method"
+  },
+  "localizedDescriptions": {
+    "zh": "全新架构的 Rime 自定义键盘。",
+    "en": "A clean-architecture custom keyboard powered by Rime."
+  }
+}
