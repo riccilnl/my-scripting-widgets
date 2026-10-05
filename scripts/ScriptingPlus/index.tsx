@@ -15,7 +15,7 @@ import {
   fetch,
 } from "scripting"
 
-const VERSION = "1.4.1"
+const VERSION = "1.4.2"
 const TUNNEL_WIRE_VERSION = "2026-08-25"
 const API_BASE = "https://api.openai.com"
 const STORAGE_TUNNEL_ID = "openai_tunnel_id"
@@ -5003,6 +5003,63 @@ async function dispatchMcp(
         return {
           kind: "response", code: 200, modern,
           json: jsonRpcResult(id, toolErrorResult(`scripting_hash failed: ${safeError(error)}`, modern)),
+        }
+      }
+    }
+
+    if (toolName === SCRIPTING_PROJECT_CREATE_PREVIEW_TOOL.name) {
+      try {
+        const payload = await scriptingProjectCreatePreviewPayload(args)
+        return {
+          kind: "response",
+          code: 200,
+          modern,
+          json: jsonRpcResult(id, toolCallResult(payload, modern)),
+        }
+      } catch (error) {
+        return {
+          kind: "response",
+          code: 200,
+          modern,
+          json: jsonRpcResult(id, toolErrorResult(`scripting_project_create_preview failed: ${safeError(error)}`, modern)),
+        }
+      }
+    }
+
+    if (toolName === SCRIPTING_PROJECT_CLONE_PREVIEW_TOOL.name) {
+      try {
+        const payload = await scriptingProjectClonePreviewPayload(args)
+        return {
+          kind: "response",
+          code: 200,
+          modern,
+          json: jsonRpcResult(id, toolCallResult(payload, modern)),
+        }
+      } catch (error) {
+        return {
+          kind: "response",
+          code: 200,
+          modern,
+          json: jsonRpcResult(id, toolErrorResult(`scripting_project_clone_preview failed: ${safeError(error)}`, modern)),
+        }
+      }
+    }
+
+    if (toolName === SCRIPTING_PROJECT_DELETE_PREVIEW_TOOL.name) {
+      try {
+        const payload = await scriptingProjectDeletePreviewPayload(args)
+        return {
+          kind: "response",
+          code: 200,
+          modern,
+          json: jsonRpcResult(id, toolCallResult(payload, modern)),
+        }
+      } catch (error) {
+        return {
+          kind: "response",
+          code: 200,
+          modern,
+          json: jsonRpcResult(id, toolErrorResult(`scripting_project_delete_preview failed: ${safeError(error)}`, modern)),
         }
       }
     }
