@@ -15,7 +15,7 @@ import {
   fetch,
 } from "scripting"
 
-const VERSION = "1.4.3"
+const VERSION = "1.4.4"
 const TUNNEL_WIRE_VERSION = "2026-08-25"
 const API_BASE = "https://api.openai.com"
 const STORAGE_TUNNEL_ID = "openai_tunnel_id"
@@ -3407,41 +3407,20 @@ async function applyGitHubQueuePreview(
   }
 
   const writeFiles = queuedFiles.filter(item => item.needsWrite)
-  const preparedWrites: Array<{ item: GitHubQueuedFilePreview; text: string }> = []
-  for (const item of writeFiles) {
-    const localPath = Path.normalize(Path.join(projectPath, item.localPath))
-    if (!pathInside(projectPath, localPath)) {
-      pendingChangePreviews.delete(previewId)
-      throw new Error(`github_queue local path escapes project: ${item.localPath}`)
-    }
-
-    const utf8 = await readStrictUtf8File(
-      localPath,
-      MAX_WRITE_FILE_BYTES,
-      `GitHub file ${item.localPath}`,
-    )
-    const roundTripData = Data.fromRawString(utf8.text)
-    const roundTripBytes = roundTripData?.toUint8Array() ?? null
-    if (!roundTripBytes || !sameBytes(roundTripBytes, item.bytes)) {
-      pendingChangePreviews.delete(previewId)
-      throw new Error(`github_queue requires lossless UTF-8 text: ${item.localPath}`)
-    }
-
-    preparedWrites.push({ item, text: utf8.text })
-  }
-
   pendingChangePreviews.delete(previewId)
 
   const commits: Array<{ path: string; sha: string; commit_sha: string }> = []
   try {
-    for (const prepared of preparedWrites) {
-      const item = prepared.item
+    for (const item of writeFiles) {
+      const content = Data.fromUint8Array(item.bytes)
+      if (!content) throw new Error(`failed to construct GitHub content: ${item.localPath}`)
+
       const request: Record<string, any> = {
         owner,
         repo,
         path: item.remotePath,
         message,
-        content: prepared.text,
+        content,
       }
       if (branch) request.branch = branch
       if (item.expectedRemoteExists && item.expectedRemoteSha) {
@@ -3449,21 +3428,33 @@ async function applyGitHubQueuePreview(
       }
 
       const result = await GitHub.putContent(request as any)
-      const verified = await githubRemoteFile(owner, repo, item.remotePath, branch)
-      if (!verified || verified.sha !== item.gitBlobSha) {
-        throw new Error(`GitHub queue verification failed: ${item.remotePath}`)
+      let verifiedSha = githubContentSha(result)
+      if (verifiedSha) {
+        if (verifiedSha !== item.gitBlobSha) {
+          throw new Error(`GitHub putContent returned unexpected SHA: ${item.remotePath}`)
+        }
+      } else {
+        for (const delayMs of [250, 750, 1500]) {
+          await sleep(delayMs)
+          const verified = await githubRemoteFile(owner, repo, item.remotePath, branch)
+          verifiedSha = verified?.sha ?? ""
+          if (verifiedSha === item.gitBlobSha) break
+        }
+        if (verifiedSha !== item.gitBlobSha) {
+          throw new Error(`GitHub queue verification failed: ${item.remotePath}`)
+        }
       }
 
       commits.push({
         path: item.remotePath,
-        sha: verified.sha,
+        sha: verifiedSha,
         commit_sha: githubCommitSha(result),
       })
     }
   } catch (error) {
     const applied = commits.map(item => item.path)
     throw new Error(
-      `github_queue apply failed after ${commits.length}/${preparedWrites.length} file(s): ${safeError(error)}` +
+      `github_queue apply failed after ${commits.length}/${writeFiles.length} file(s): ${safeError(error)}` +
       (applied.length > 0 ? `; already committed: ${applied.join(", ")}` : ""),
     )
   }
@@ -3486,6 +3477,12 @@ async function applyGitHubQueuePreview(
     commit_count: commits.length,
     commits,
   }
+}
+
+function githubContentSha(value: unknown): string {
+  if (!isPlainObject(value)) return ""
+  const content = isPlainObject(value.content) ? value.content : {}
+  return typeof content.sha === "string" ? content.sha : ""
 }
 
 function githubCommitSha(value: unknown): string {
