@@ -15,7 +15,7 @@ import {
   fetch,
 } from "scripting"
 
-const VERSION = "1.4.2"
+const VERSION = "1.4.3"
 const TUNNEL_WIRE_VERSION = "2026-08-25"
 const API_BASE = "https://api.openai.com"
 const STORAGE_TUNNEL_ID = "openai_tunnel_id"
@@ -3406,21 +3406,42 @@ async function applyGitHubQueuePreview(
     }
   }
 
+  const writeFiles = queuedFiles.filter(item => item.needsWrite)
+  const preparedWrites: Array<{ item: GitHubQueuedFilePreview; text: string }> = []
+  for (const item of writeFiles) {
+    const localPath = Path.normalize(Path.join(projectPath, item.localPath))
+    if (!pathInside(projectPath, localPath)) {
+      pendingChangePreviews.delete(previewId)
+      throw new Error(`github_queue local path escapes project: ${item.localPath}`)
+    }
+
+    const utf8 = await readStrictUtf8File(
+      localPath,
+      MAX_WRITE_FILE_BYTES,
+      `GitHub file ${item.localPath}`,
+    )
+    const roundTripData = Data.fromRawString(utf8.text)
+    const roundTripBytes = roundTripData?.toUint8Array() ?? null
+    if (!roundTripBytes || !sameBytes(roundTripBytes, item.bytes)) {
+      pendingChangePreviews.delete(previewId)
+      throw new Error(`github_queue requires lossless UTF-8 text: ${item.localPath}`)
+    }
+
+    preparedWrites.push({ item, text: utf8.text })
+  }
+
   pendingChangePreviews.delete(previewId)
 
-  const writeFiles = queuedFiles.filter(item => item.needsWrite)
   const commits: Array<{ path: string; sha: string; commit_sha: string }> = []
   try {
-    for (const item of writeFiles) {
-      const content = Data.fromUint8Array(item.bytes)
-      if (!content) throw new Error(`failed to construct GitHub content: ${item.localPath}`)
-
+    for (const prepared of preparedWrites) {
+      const item = prepared.item
       const request: Record<string, any> = {
         owner,
         repo,
         path: item.remotePath,
         message,
-        content,
+        content: prepared.text,
       }
       if (branch) request.branch = branch
       if (item.expectedRemoteExists && item.expectedRemoteSha) {
@@ -3442,7 +3463,7 @@ async function applyGitHubQueuePreview(
   } catch (error) {
     const applied = commits.map(item => item.path)
     throw new Error(
-      `github_queue apply failed after ${commits.length}/${writeFiles.length} file(s): ${safeError(error)}` +
+      `github_queue apply failed after ${commits.length}/${preparedWrites.length} file(s): ${safeError(error)}` +
       (applied.length > 0 ? `; already committed: ${applied.join(", ")}` : ""),
     )
   }
