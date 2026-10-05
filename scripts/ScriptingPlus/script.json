@@ -1,0 +1,27 @@
+{
+  "entry" : "index.tsx",
+  "intentInputTypes" : [
+
+  ],
+  "runInApp" : false,
+  "permissions" : null,
+  "color" : "rgba(0, 122, 255, 1.00)",
+  "localizedDescriptions" : {
+    "zh" : "通过 OpenAI Secure MCP Tunnel 提供项目级本地部署、GitHub 推送和轻量诊断。开发默认在容器完成，Tunnel 只承担低频项目级操作。",
+    "en" : "Project-level local deployment, GitHub push, and lightweight diagnostics over OpenAI Secure MCP Tunnel. Development happens in the container; the Tunnel handles low-frequency project operations."
+  },
+  "icon" : "wrench.and.screwdriver",
+  "iconImage" : "",
+  "localizedNames" : {
+    "en" : "ScriptingPlus",
+    "zh" : "ScriptingPlus"
+  },
+  "description" : "Project-level Scripting deployment and GitHub push control plane over OpenAI Secure MCP Tunnel.",
+  "contributors" : [
+
+  ],
+  "version" : "1.4.1",
+  "author" : null,
+  "name" : "ScriptingPlus",
+  "remoteResource" : null
+}
