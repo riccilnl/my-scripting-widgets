@@ -1,18 +1,19 @@
 import {
   Button,
-  Group,
+  DragGesture,
   HStack,
   Image,
   ScrollView,
   Spacer,
   Text,
   useEffect,
+  useRef,
   useState,
   VStack,
   ZStack
 } from "scripting";
 import type { CommonPhraseCategory } from "../../contracts/auxiliary";
-import type { KeyboardSkin, SkinColors } from "../../contracts/skin";
+import type { KeyboardSkin, SkinColors, SkinShapeStyle } from "../../contracts/skin";
 import {
   loadClipboardHistory,
   loadVisibleCommonPhraseCategories,
@@ -23,6 +24,81 @@ import {
 } from "../runtime/AuxiliaryStorage";
 
 export type AuxiliarySurfaceId = "clipboard" | "commonPhrases";
+
+function ClipboardSwipeRow(props: {
+  text: string;
+  width: number;
+  fontSize: number;
+  foreground: string;
+  background: SkinShapeStyle;
+  cornerRadius: number;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  const [dragX, setDragX] = useState(0);
+  const horizontalDragRef = useRef<boolean | null>(null);
+  const revealWidth = 58;
+  const deleteThreshold = 72;
+
+  function resetDrag() {
+    horizontalDragRef.current = null;
+    setDragX(0);
+  }
+
+  return (
+    <ZStack
+      alignment="trailing"
+      frame={{ width: props.width, alignment: "leading" as any }}
+      background={"rgba(255,59,48,1)" as any}
+      clipShape={{ type: "rect", cornerRadius: props.cornerRadius } as any}
+      contentShape="rect"
+      gesture={DragGesture({ minDistance: 28, coordinateSpace: "local" })
+        .onChanged((details: any) => {
+          const dx = Number(details?.translation?.width ?? 0);
+          const dy = Number(details?.translation?.height ?? 0);
+          if (horizontalDragRef.current == null) {
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+            horizontalDragRef.current = dx < 0 && absX > absY * 1.25;
+          }
+          if (!horizontalDragRef.current) return;
+          setDragX(Math.max(-revealWidth, Math.min(0, dx)));
+        })
+        .onEnded((details: any) => {
+          const dx = Number(details?.translation?.width ?? 0);
+          const horizontal = horizontalDragRef.current === true;
+          resetDrag();
+          if (horizontal && dx <= -deleteThreshold) props.onDelete();
+        })}
+    >
+      <HStack
+        spacing={0}
+        frame={{ width: revealWidth, alignment: "center" as any }}
+        foregroundStyle={"white" as any}
+      >
+        <Image systemName="trash" font={17} />
+      </HStack>
+      <HStack
+        spacing={0}
+        frame={{ width: props.width, alignment: "leading" as any }}
+        background={props.background as any}
+        offset={{ x: dragX, y: 0 }}
+        contentShape="rect"
+        onTapGesture={props.onSelect}
+      >
+        <Text
+          font={props.fontSize}
+          lineLimit={3}
+          foregroundStyle={props.foreground as any}
+          padding={{ horizontal: 10, vertical: 7 }}
+          frame={{ width: props.width, alignment: "leading" as any }}
+        >
+          {props.text.replace(/\s+/g, " ")}
+        </Text>
+      </HStack>
+    </ZStack>
+  );
+}
 
 export function AuxiliarySurfaceHost(props: {
   surface: AuxiliarySurfaceId;
@@ -73,7 +149,7 @@ export function AuxiliarySurfaceHost(props: {
 
   function deleteClipboard(text: string) {
     props.onHaptic();
-    const next = removeClipboardHistoryItem(loadClipboardHistory(), text);
+    const next = removeClipboardHistoryItem(clipboardItems, text);
     setClipboardItems(saveClipboardHistory(next) ?? next);
   }
 
@@ -123,7 +199,6 @@ export function AuxiliarySurfaceHost(props: {
       <VStack
         spacing={0}
         frame={{ width: props.width, height: props.height, alignment: "top" as any }}
-        background={props.colors.keyboardBackground as any}
       >
         {header(
           "剪贴板",
@@ -141,48 +216,40 @@ export function AuxiliarySurfaceHost(props: {
             </ZStack>
           </ZStack>
         )}
-        <ScrollView axes="vertical" scrollIndicator="visible" frame={{ width: props.width, height: bodyHeight }}>
-          <VStack
-            spacing={6}
-            padding={{ horizontal: horizontalInset, top: 4, bottom: 10 }}
-            frame={{ width: props.width, alignment: "top" as any }}
-          >
-            {clipboardItems.length > 0
-              ? clipboardItems.map((text, index) => (
-                <Text
-                  key={`clipboard-${index}-${text}`}
-                  font={props.skin.typography.contentPanel.row.fontSize}
-                  lineLimit={3}
-                  foregroundStyle={props.colors.foreground as any}
-                  padding={{ horizontal: 10, vertical: 7 }}
-                  frame={{ width: rowWidth, minHeight: 38, alignment: "leading" as any }}
-                  background={props.colors.keyBackgrounds.normal as any}
-                  clipShape={{ type: "rect", cornerRadius: props.skin.visuals.keyCornerRadius } as any}
-                  contentShape="rect"
-                  onTapGesture={() => selectClipboard(text)}
-                  contextMenu={{
-                    menuItems: (
-                      <Group>
-                        <Button title="删除" role="destructive" action={() => deleteClipboard(text)} />
-                      </Group>
-                    )
-                  }}
-                >
-                  {text.replace(/\s+/g, " ")}
-                </Text>
-              ))
-              : (
-                <Text
-                  font={props.skin.typography.status.fontSize}
-                  foregroundStyle={props.colors.secondaryForeground as any}
-                  padding={{ top: 28 }}
-                  frame={{ width: rowWidth, alignment: "center" as any }}
-                >
-                  暂无剪贴板记录
-                </Text>
-              )}
-          </VStack>
-        </ScrollView>
+        {clipboardItems.length > 0
+          ? (
+            <ScrollView axes="vertical" scrollIndicator="visible" frame={{ width: props.width, height: bodyHeight }}>
+              <VStack
+                spacing={2}
+                padding={{ horizontal: horizontalInset, top: 4, bottom: 10 }}
+                frame={{ width: props.width, alignment: "top" as any }}
+              >
+                {clipboardItems.map((text, index) => (
+                  <ClipboardSwipeRow
+                    key={`clipboard-${index}-${text}`}
+                    text={text}
+                    width={rowWidth}
+                    fontSize={props.skin.typography.contentPanel.row.fontSize}
+                    foreground={props.colors.foreground}
+                    background={props.colors.keyBackgrounds.system}
+                    cornerRadius={props.skin.visuals.keyCornerRadius}
+                    onSelect={() => selectClipboard(text)}
+                    onDelete={() => deleteClipboard(text)}
+                  />
+                ))}
+              </VStack>
+            </ScrollView>
+          )
+          : (
+            <Text
+              font={props.skin.typography.status.fontSize}
+              foregroundStyle={props.colors.secondaryForeground as any}
+              padding={{ top: 28 }}
+              frame={{ width: rowWidth, alignment: "center" as any }}
+            >
+              暂无剪贴板记录
+            </Text>
+          )}
       </VStack>
     );
   }
@@ -197,7 +264,6 @@ export function AuxiliarySurfaceHost(props: {
     <VStack
       spacing={0}
       frame={{ width: props.width, height: props.height, alignment: "top" as any }}
-      background={props.colors.keyboardBackground as any}
     >
       {header("常用语")}
       {categories.length > 0
