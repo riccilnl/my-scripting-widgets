@@ -32,6 +32,9 @@ export const DEFAULT_SKIN: KeyboardSkin = {
     keyboardBackground: "rgba(210,213,219,1)",
     foreground: "rgba(0,0,0,0.92)",
     secondaryForeground: "rgba(60,60,67,0.68)",
+    candidateForeground: "rgba(0,0,0,0.92)",
+    candidateSelectedForeground: "rgba(0,0,0,0.92)",
+    t9PinyinBackground: "rgba(255,255,255,1)",
     keyBackgrounds: {
       normal: "rgba(255,255,255,1)",
       system: "rgba(172,177,186,1)",
@@ -43,6 +46,9 @@ export const DEFAULT_SKIN: KeyboardSkin = {
     keyboardBackground: "rgba(0,0,0,0)",
     foreground: "rgba(255,255,255,0.94)",
     secondaryForeground: "rgba(235,235,245,0.62)",
+    candidateForeground: "rgba(255,255,255,0.94)",
+    candidateSelectedForeground: "rgba(255,255,255,0.94)",
+    t9PinyinBackground: "rgba(82,82,85,1)",
     keyBackgrounds: {
       normal: "rgba(82,82,85,1)",
       system: "rgba(58,58,60,1)",
