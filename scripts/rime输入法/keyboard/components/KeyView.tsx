@@ -80,7 +80,9 @@ export function KeyView(props: Props) {
     preferences
   );
   const typography = skin.typography.keys[face.centerTextRole];
-  const foreground = definition.visualRole === "accent"
+  const visualRole = skin.keyVisualRoleOverrides?.[definition.id] ?? definition.visualRole;
+  const keyBackground = colors.keyBackgroundOverrides?.[definition.id] ?? colors.keyBackgrounds[visualRole];
+  const foreground = visualRole === "accent"
     ? "rgba(255,255,255,1)"
     : colors.foreground;
   const [pressed, setPressed] = useState(false);
@@ -320,7 +322,7 @@ export function KeyView(props: Props) {
           >
             <ZStack
               frame={{ width, height }}
-              background={colors.keyBackgrounds[definition.visualRole] as any}
+              background={keyBackground as any}
             scaleEffect={pressVisual.scale}
             foregroundStyle={foreground as any}
             clipShape={{ type: "rect", cornerRadius: skin.visuals.keyCornerRadius } as any}
@@ -455,7 +457,7 @@ export function KeyView(props: Props) {
             ? (
               <ZStack
                 frame={{ width: popupWidth, height }}
-                background={colors.keyBackgrounds[definition.visualRole] as any}
+                background={keyBackground as any}
                 foregroundStyle={foreground as any}
                 clipShape={{ type: "rect", cornerRadius: skin.visuals.keyPopupCornerRadius } as any}
                 shadow={skin.visuals.keyPopupShadow as any}
