@@ -91,7 +91,9 @@ async function readText(path: string): Promise<string> {
   return "";
 }
 
-function runtimeFallback(runtimeSchemas: readonly RuntimeSchemaLike[]): RimeSchemeDescriptor[] {
+export function listRuntimeSupportedRimeSchemes(
+  runtimeSchemas: readonly RuntimeSchemaLike[]
+): RimeSchemeDescriptor[] {
   const result: RimeSchemeDescriptor[] = [];
   for (const schema of runtimeSchemas) {
     const id = String(schema?.id ?? "").trim();
@@ -150,7 +152,7 @@ export async function listSupportedRimeSchemes(
   }
 
   const installed = await listInstalledRimeSchemes();
-  if (!installed.length) return runtimeFallback(runtimeSchemas);
+  if (!installed.length) return listRuntimeSupportedRimeSchemes(runtimeSchemas);
   return installed
     .filter((scheme) => runtimeById.has(scheme.id) && isKeyboardCompatibleScheme(scheme))
     .map((scheme) => ({
