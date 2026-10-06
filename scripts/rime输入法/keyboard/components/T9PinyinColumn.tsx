@@ -18,7 +18,7 @@ export function T9PinyinColumn(props: Props) {
   return (
     <ZStack
       frame={{ width: props.width, height: props.height }}
-      background={props.colors.keyBackgrounds.normal as any}
+      background={props.colors.t9PinyinBackground as any}
       foregroundStyle={props.colors.foreground as any}
       clipShape={{ type: "rect", cornerRadius: props.skin.visuals.keyCornerRadius } as any}
     >
