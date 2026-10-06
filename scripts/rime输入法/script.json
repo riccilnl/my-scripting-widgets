@@ -1,25 +1,27 @@
 {
-  "name": "rime输入法",
-  "version": "0.3.26",
-  "description": "Skin switching: adds persistent skin selection in settings and resolves the selected skin at keyboard startup for both visuals and layout geometry.",
-  "author": {
-    "name": "rime输入法",
-    "email": null,
-    "homepage": null
-  },
-  "entry": "index.tsx",
-  "runInApp": false,
   "icon": "keyboard.fill",
+  "iconImage": "",
+  "runInApp": false,
+  "author": {
+    "homepage": null,
+    "name": "rime输入法",
+    "email": null
+  },
+  "description": "Architecture/performance cleanup: shared settings and auxiliary normalization, faster Rime startup validation, cheaper clipboard deletion, and seam-safe skin background blending.",
+  "remoteResource": null,
   "color": "rgba(0, 0, 0, 1)",
-  "permissions": null,
-  "intentInputTypes": [],
-  "contributors": [],
+  "version": "0.3.39",
+  "localizedDescriptions": {
+    "en": "A clean-architecture custom keyboard powered by Rime.",
+    "zh": "全新架构的 Rime 自定义键盘。"
+  },
   "localizedNames": {
     "zh": "rime输入法",
     "en": "Rime Input Method"
   },
-  "localizedDescriptions": {
-    "zh": "全新架构的 Rime 自定义键盘。",
-    "en": "A clean-architecture custom keyboard powered by Rime."
-  }
+  "permissions": null,
+  "name": "rime输入法",
+  "intentInputTypes": [],
+  "entry": "index.tsx",
+  "contributors": []
 }
