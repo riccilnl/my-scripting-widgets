@@ -53,7 +53,11 @@ export type SkinColors = {
   keyboardBackground: SkinShapeStyle;
   foreground: string;
   secondaryForeground: string;
+  candidateForeground: string;
+  candidateSelectedForeground: string;
+  t9PinyinBackground: SkinShapeStyle;
   keyBackgrounds: Record<KeyVisualRole, SkinShapeStyle>;
+  keyBackgroundOverrides?: Partial<Record<string, SkinShapeStyle>>;
   candidateSelectedBackground: SkinShapeStyle;
 };
 
@@ -61,6 +65,7 @@ export type KeyboardSkin = {
   id: SkinId;
   layoutDefaults: KeyboardLayoutDefaults;
   geometry: SkinGeometry;
+  keyVisualRoleOverrides?: Partial<Record<string, KeyVisualRole>>;
   typography: SkinTypography;
   light: SkinColors;
   dark: SkinColors;
