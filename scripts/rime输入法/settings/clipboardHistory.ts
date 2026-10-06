@@ -1,4 +1,10 @@
-import { CLIPBOARD_HISTORY_LIMIT, CLIPBOARD_HISTORY_STORAGE_KEY } from "../contracts/auxiliary";
+import {
+  CLIPBOARD_HISTORY_LIMIT,
+  CLIPBOARD_HISTORY_STORAGE_KEY,
+  normalizeClipboardHistoryValue,
+  prependClipboardHistoryValue,
+  removeClipboardHistoryItemValue
+} from "../contracts/auxiliary";
 export { CLIPBOARD_HISTORY_LIMIT, CLIPBOARD_HISTORY_STORAGE_KEY };
 
 const SHARED_STORAGE_OPTIONS = { shared: true } as const;
@@ -8,16 +14,7 @@ function storageApi(): any {
 }
 
 export function normalizeClipboardHistory(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const result: string[] = [];
-  const seen = new Set<string>();
-  for (const item of value) {
-    if (typeof item !== "string" || !item.trim() || seen.has(item)) continue;
-    seen.add(item);
-    result.push(item);
-    if (result.length >= CLIPBOARD_HISTORY_LIMIT) break;
-  }
-  return result;
+  return normalizeClipboardHistoryValue(value);
 }
 
 export function loadClipboardHistory(): string[] {
@@ -30,15 +27,14 @@ export function loadClipboardHistory(): string[] {
       ? storage.getString(CLIPBOARD_HISTORY_STORAGE_KEY, SHARED_STORAGE_OPTIONS)
       : null;
     if (raw == null) return [];
-    const value = typeof raw === "string" ? JSON.parse(raw) : raw;
-    return normalizeClipboardHistory(value);
+    return normalizeClipboardHistoryValue(typeof raw === "string" ? JSON.parse(raw) : raw);
   } catch {
     return [];
   }
 }
 
 export function saveClipboardHistory(value: unknown): string[] | null {
-  const normalized = normalizeClipboardHistory(value);
+  const normalized = normalizeClipboardHistoryValue(value);
   const storage = storageApi();
   if (!storage) return null;
   try {
@@ -47,11 +43,7 @@ export function saveClipboardHistory(value: unknown): string[] | null {
       return normalized;
     }
     if (typeof storage.setString === "function") {
-      storage.setString(
-        CLIPBOARD_HISTORY_STORAGE_KEY,
-        JSON.stringify(normalized),
-        SHARED_STORAGE_OPTIONS
-      );
+      storage.setString(CLIPBOARD_HISTORY_STORAGE_KEY, JSON.stringify(normalized), SHARED_STORAGE_OPTIONS);
       return normalized;
     }
   } catch {}
@@ -59,11 +51,9 @@ export function saveClipboardHistory(value: unknown): string[] | null {
 }
 
 export function prependClipboardHistory(items: readonly string[], text: string): string[] {
-  if (!text.trim()) return normalizeClipboardHistory(items);
-  return normalizeClipboardHistory([text, ...items.filter((item) => item !== text)]);
+  return prependClipboardHistoryValue(items, text);
 }
 
 export function removeClipboardHistoryItem(items: readonly string[], text: string): string[] {
-  if (!text) return normalizeClipboardHistory(items);
-  return normalizeClipboardHistory(items.filter((item) => item !== text));
+  return removeClipboardHistoryItemValue(items, text);
 }
