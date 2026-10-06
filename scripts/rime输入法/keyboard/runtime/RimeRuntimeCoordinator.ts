@@ -3,7 +3,7 @@ import { RimeEngine } from "../../core/rime/RimeEngine";
 import {
   describeSchemes,
   listInstalledRimeSchemes,
-  listSupportedRimeSchemes,
+  listRuntimeSupportedRimeSchemes,
   resolveSchemaForChineseLayout
 } from "../../core/rime/SchemeCatalog";
 import { prepareT9BridgeRuntime } from "../../core/rime/T9BridgeRuntime";
@@ -28,12 +28,14 @@ async function buildRuntime(request: RimeRuntimeRequest): Promise<RimeEngine> {
   }
 
   if (chineseLayout === "t9") {
-    const bridgeReady = await prepareT9BridgeRuntime();
-    if (!bridgeReady) throw new Error("wanxiang_t9 九键输入桥安装或注册失败");
-    runtimeSchemas = await Rime.listSchemas();
+    const bridge = await prepareT9BridgeRuntime();
+    if (!bridge.ready) throw new Error("wanxiang_t9 九键输入桥安装或注册失败");
+    if (bridge.changed) runtimeSchemas = await Rime.listSchemas();
   }
 
-  const schemes = await listSupportedRimeSchemes(runtimeSchemas);
+  // Rime.listSchemas() is already the runtime-selectable source of truth.
+  // Avoid rescanning and parsing every installed .schema.yaml on each keyboard mount.
+  const schemes = listRuntimeSupportedRimeSchemes(runtimeSchemas);
   const engine = new RimeEngine(new Rime.Session());
 
   try {
