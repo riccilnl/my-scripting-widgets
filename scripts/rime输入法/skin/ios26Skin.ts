@@ -37,6 +37,9 @@ export const IOS26_SKIN: KeyboardSkin = {
     keyboardBackground: "regularMaterial",
     foreground: "rgba(0,0,0,0.94)",
     secondaryForeground: "rgba(60,60,67,0.62)",
+    candidateForeground: "rgba(0,0,0,0.94)",
+    candidateSelectedForeground: "rgba(0,0,0,0.94)",
+    t9PinyinBackground: "rgba(255,255,255,0.96)",
     keyBackgrounds: {
       normal: "rgba(255,255,255,0.96)",
       system: "rgba(184,189,199,0.96)",
@@ -48,6 +51,9 @@ export const IOS26_SKIN: KeyboardSkin = {
     keyboardBackground: "regularMaterial",
     foreground: "rgba(255,255,255,0.96)",
     secondaryForeground: "rgba(235,235,245,0.62)",
+    candidateForeground: "rgba(255,255,255,0.96)",
+    candidateSelectedForeground: "rgba(255,255,255,0.96)",
+    t9PinyinBackground: "rgba(92,92,96,0.94)",
     keyBackgrounds: {
       normal: "rgba(92,92,96,0.94)",
       system: "rgba(60,60,64,0.94)",
