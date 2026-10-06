@@ -157,7 +157,7 @@ export function CandidateBar(props: Props) {
                             >
                               <Text
                                 font={props.skin.typography.candidate.fontSize}
-                                foregroundStyle={props.colors.foreground as any}
+                                foregroundStyle={(selected ? props.colors.candidateSelectedForeground : props.colors.candidateForeground) as any}
                                 lineLimit={1}
                                 minimumScaleFactor={0.65}
                               >
