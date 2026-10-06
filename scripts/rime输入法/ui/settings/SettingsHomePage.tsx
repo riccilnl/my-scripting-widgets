@@ -29,6 +29,7 @@ import { SkinSettingsPage } from "./SkinSettingsPage";
 import { FunctionInstructionsPage } from "./FunctionInstructionsPage";
 import { ClipboardSettingsPage } from "./ClipboardSettingsPage";
 import { CommonPhrasesSettingsPage } from "./CommonPhrasesSettingsPage";
+import { WanxiangManagerPage } from "./WanxiangManagerPage";
 
 function availableFor(
   layout: ChineseLayoutId,
@@ -152,6 +153,7 @@ export function SettingsHomePage() {
           )
           : <Text foregroundStyle="secondaryLabel">当前布局没有可用方案。</Text>}
         {schemeStatus ? <Text foregroundStyle="secondaryLabel">{schemeStatus}</Text> : null}
+        <NavigationLink title="方案下载&更新" destination={<WanxiangManagerPage />} />
         <NavigationLink title="方案设置" destination={<RimeSchemeSettingsPage />} />
         <NavigationLink title="键盘设置" destination={<KeyboardSettingsPage />} />
       </Section>
