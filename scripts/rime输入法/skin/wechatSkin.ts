@@ -15,6 +15,11 @@ export const WECHAT_SKIN: KeyboardSkin = {
     numericLeftColumn: { fraction: 0.158, min: 50, max: 62 },
     numericRightColumn: { fraction: 0.18, min: 58, max: 74 }
   },
+  keyVisualRoleOverrides: {
+    "enter": "accent",
+    "t9-enter": "accent",
+    "numeric-enter": "accent"
+  },
   typography: {
     keys: {
       letter: { fontSize: 26, fontWeight: "regular" },
@@ -34,26 +39,32 @@ export const WECHAT_SKIN: KeyboardSkin = {
     }
   },
   light: {
-    keyboardBackground: "rgba(220,223,229,1)",
-    foreground: "rgba(20,20,22,0.96)",
-    secondaryForeground: "rgba(60,60,67,0.62)",
+    keyboardBackground: "rgba(208,211,216,1)",
+    foreground: "rgba(0,0,0,1)",
+    secondaryForeground: "rgba(153,153,153,1)",
+    candidateForeground: "rgba(66,66,66,1)",
+    candidateSelectedForeground: "rgba(24,172,102,1)",
+    t9PinyinBackground: "rgba(252,252,254,1)",
     keyBackgrounds: {
-      normal: "rgba(255,255,255,1)",
-      system: "rgba(183,188,198,1)",
-      accent: "rgba(87,204,111,1)"
+      normal: "rgba(252,252,254,1)",
+      system: "rgba(183,188,196,1)",
+      accent: "rgba(99,194,111,1)"
     },
-    candidateSelectedBackground: "rgba(255,255,255,0.94)"
+    candidateSelectedBackground: "rgba(249,250,251,1)"
   },
   dark: {
-    keyboardBackground: "rgba(32,33,36,1)",
-    foreground: "rgba(250,250,250,0.96)",
-    secondaryForeground: "rgba(235,235,245,0.62)",
+    keyboardBackground: "rgba(44,44,44,1)",
+    foreground: "rgba(253,253,253,1)",
+    secondaryForeground: "rgba(174,174,174,1)",
+    candidateForeground: "rgba(254,254,254,1)",
+    candidateSelectedForeground: "rgba(0,230,142,1)",
+    t9PinyinBackground: "rgba(101,101,101,1)",
     keyBackgrounds: {
-      normal: "rgba(82,83,87,1)",
-      system: "rgba(57,58,61,1)",
-      accent: "rgba(70,184,92,1)"
+      normal: "rgba(101,101,101,1)",
+      system: "rgba(60,60,60,1)",
+      accent: "rgba(0,177,117,1)"
     },
-    candidateSelectedBackground: "rgba(96,97,101,0.94)"
+    candidateSelectedBackground: "rgba(103,103,103,1)"
   },
   visuals: {
     keyCornerRadius: 7,
