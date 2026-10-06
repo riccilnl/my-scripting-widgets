@@ -33,6 +33,9 @@ export const APPLE_CLASSIC_SKIN: KeyboardSkin = {
     keyboardBackground: "rgba(209,211,218,1)",
     foreground: "rgba(0,0,0,0.92)",
     secondaryForeground: "rgba(60,60,67,0.68)",
+    candidateForeground: "rgba(0,0,0,0.92)",
+    candidateSelectedForeground: "rgba(0,0,0,0.92)",
+    t9PinyinBackground: "rgba(255,255,255,1)",
     keyBackgrounds: {
       normal: "rgba(255,255,255,1)",
       system: "rgba(174,179,188,1)",
@@ -44,6 +47,9 @@ export const APPLE_CLASSIC_SKIN: KeyboardSkin = {
     keyboardBackground: "rgba(28,28,30,1)",
     foreground: "rgba(255,255,255,0.94)",
     secondaryForeground: "rgba(235,235,245,0.60)",
+    candidateForeground: "rgba(255,255,255,0.94)",
+    candidateSelectedForeground: "rgba(255,255,255,0.94)",
+    t9PinyinBackground: "rgba(99,99,102,1)",
     keyBackgrounds: {
       normal: "rgba(99,99,102,1)",
       system: "rgba(58,58,60,1)",
