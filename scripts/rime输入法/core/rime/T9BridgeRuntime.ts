@@ -7,12 +7,96 @@ const PROCESSOR_COMPONENT = "lua_processor@*t9_bridge*processor";
 const FILTER_COMPONENT = "lua_filter@*t9_bridge*filter";
 const PROCESSOR_PATCH_PREFIX = "engine/processors/@before ";
 const FILTER_PATCH_PREFIX = "engine/filters/@before ";
+const RUNTIME_MARKER_KEY = "rime_input_method_t9_bridge_runtime_v1";
+const RUNTIME_MARKER_VERSION = 1;
+const SHARED_STORAGE_OPTIONS = { shared: true } as const;
+
+export type T9BridgeRuntimeResult = {
+  ready: boolean;
+  changed: boolean;
+};
+
+type FileStamp = {
+  size: number;
+  modificationDate: number;
+};
+
+type RuntimeMarker = {
+  version: number;
+  lua: FileStamp;
+  custom: FileStamp;
+};
 
 type RimePaths = {
   rootDir: string;
   sharedDataDir: string;
   userDataDir: string;
 };
+
+function storageApi(): any {
+  return (globalThis as any).Storage;
+}
+
+function readRuntimeMarker(): RuntimeMarker | null {
+  const storage = storageApi();
+  if (!storage) return null;
+  try {
+    const raw = typeof storage.get === "function"
+      ? storage.get(RUNTIME_MARKER_KEY, SHARED_STORAGE_OPTIONS)
+      : typeof storage.getString === "function"
+      ? storage.getString(RUNTIME_MARKER_KEY, SHARED_STORAGE_OPTIONS)
+      : null;
+    const value = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!value || typeof value !== "object" || value.version !== RUNTIME_MARKER_VERSION) return null;
+    const lua = value.lua;
+    const custom = value.custom;
+    if (!lua || !custom) return null;
+    if (!Number.isFinite(lua.size) || !Number.isFinite(lua.modificationDate)) return null;
+    if (!Number.isFinite(custom.size) || !Number.isFinite(custom.modificationDate)) return null;
+    return {
+      version: RUNTIME_MARKER_VERSION,
+      lua: { size: Number(lua.size), modificationDate: Number(lua.modificationDate) },
+      custom: { size: Number(custom.size), modificationDate: Number(custom.modificationDate) }
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeRuntimeMarker(marker: RuntimeMarker): void {
+  const storage = storageApi();
+  if (!storage) return;
+  try {
+    if (typeof storage.set === "function") {
+      storage.set(RUNTIME_MARKER_KEY, marker, SHARED_STORAGE_OPTIONS);
+      return;
+    }
+    if (typeof storage.setString === "function") {
+      storage.setString(RUNTIME_MARKER_KEY, JSON.stringify(marker), SHARED_STORAGE_OPTIONS);
+    }
+  } catch {}
+}
+
+async function fileStamp(fm: any, path: string): Promise<FileStamp | null> {
+  try {
+    const stat = typeof fm.statSync === "function"
+      ? fm.statSync(path)
+      : typeof fm.stat === "function"
+      ? await fm.stat(path)
+      : null;
+    if (!stat || stat.type === "notFound") return null;
+    const size = Number(stat.size);
+    const modificationDate = Number(stat.modificationDate);
+    if (!Number.isFinite(size) || !Number.isFinite(modificationDate)) return null;
+    return { size, modificationDate };
+  } catch {
+    return null;
+  }
+}
+
+function sameStamp(left: FileStamp | null, right: FileStamp | null): boolean {
+  return Boolean(left && right && left.size === right.size && left.modificationDate === right.modificationDate);
+}
 
 function rimePaths(): RimePaths {
   const fm = (globalThis as any).FileManager;
@@ -142,32 +226,45 @@ function ensureRegistration(customText: string): { changed: boolean; text: strin
   };
 }
 
-export async function prepareT9BridgeRuntime(): Promise<boolean> {
+export async function prepareT9BridgeRuntime(): Promise<T9BridgeRuntimeResult> {
   const fm = (globalThis as any).FileManager;
   const rime = (globalThis as any).Rime;
-  if (!fm || !rime) return false;
+  if (!fm || !rime) return { ready: false, changed: false };
 
   const paths = rimePaths();
-  if (!paths.userDataDir || !paths.sharedDataDir) return false;
+  if (!paths.userDataDir || !paths.sharedDataDir) return { ready: false, changed: false };
 
   const luaDir = String(Path.join(paths.userDataDir, "lua")).trim();
   const luaPath = String(Path.join(luaDir, BRIDGE_FILENAME)).trim();
   const customPath = String(Path.join(paths.sharedDataDir, `${TARGET_SCHEMA_ID}.custom.yaml`)).trim();
 
+  // Fast path: after one verified installation, compare only file metadata.
+  // Full file contents are read again whenever either file changes.
+  const marker = readRuntimeMarker();
+  if (marker) {
+    const [luaStamp, customStamp] = await Promise.all([
+      fileStamp(fm, luaPath),
+      fileStamp(fm, customPath)
+    ]);
+    if (sameStamp(luaStamp, marker.lua) && sameStamp(customStamp, marker.custom)) {
+      return { ready: true, changed: false };
+    }
+  }
+
   if (!(await mkdir(fm, paths.userDataDir)) || !(await mkdir(fm, luaDir)) || !(await mkdir(fm, paths.sharedDataDir))) {
-    return false;
+    return { ready: false, changed: false };
   }
 
   let luaChanged = false;
   if (await readText(fm, luaPath) !== T9_BRIDGE_LUA) {
-    if (!(await writeText(fm, luaPath, T9_BRIDGE_LUA))) return false;
+    if (!(await writeText(fm, luaPath, T9_BRIDGE_LUA))) return { ready: false, changed: false };
     luaChanged = true;
   }
 
   const before = await readText(fm, customPath);
   const registration = ensureRegistration(before);
   if (registration.changed && !(await writeText(fm, customPath, registration.text))) {
-    return false;
+    return { ready: false, changed: false };
   }
 
   const changed = luaChanged || registration.changed;
@@ -176,5 +273,17 @@ export async function prepareT9BridgeRuntime(): Promise<boolean> {
     await rime.deploy();
   }
 
-  return true;
+  const [luaStamp, customStamp] = await Promise.all([
+    fileStamp(fm, luaPath),
+    fileStamp(fm, customPath)
+  ]);
+  if (luaStamp && customStamp) {
+    writeRuntimeMarker({
+      version: RUNTIME_MARKER_VERSION,
+      lua: luaStamp,
+      custom: customStamp
+    });
+  }
+
+  return { ready: true, changed };
 }
