@@ -13,7 +13,7 @@ import {
 import type { KeyboardCommand, SurfaceLayerId } from "../contracts/action";
 import type { KeyDefinition } from "../contracts/key";
 import type { ChineseLayoutId, KeyboardRuntimeSettings } from "../contracts/preferences";
-import type { KeyboardSkin } from "../contracts/skin";
+import type { KeyboardSkin, SkinShapeStyle } from "../contracts/skin";
 import { readKeyboardRuntimeSettings } from "./runtime/KeyboardRuntimeSettings";
 import { recordClipboardText } from "./runtime/AuxiliaryStorage";
 import { FROZEN_NUMERIC_SYMBOLS } from "../layout/numeric";
@@ -68,6 +68,26 @@ function sameCandidateEntries(left: readonly CandidateEntry[], right: readonly C
     entry.originalIndex === right[index]?.originalIndex &&
     entry.candidate.text === right[index]?.candidate.text
   ));
+}
+
+function keyboardBackgroundStyle(style: SkinShapeStyle): SkinShapeStyle {
+  if (typeof style !== "string") return "clear";
+  const match = style.match(/^rgba\(\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^)]+)\)$/i);
+  if (!match) {
+    // Material styles (for example iOS 26's regularMaterial) should continue
+    // inheriting the native host surface instead of reintroducing a hard seam.
+    return "clear";
+  }
+  const transparent = `rgba(${match[1]},${match[2]},${match[3]},0)`;
+  return {
+    gradient: [
+      { color: transparent, location: 0 },
+      { color: style, location: 0.12 },
+      { color: style, location: 1 }
+    ],
+    startPoint: { x: 0.5, y: 0 },
+    endPoint: { x: 0.5, y: 1 }
+  };
 }
 
 function KeyboardRoot(props: {
@@ -818,8 +838,12 @@ function KeyboardRoot(props: {
         return (
           <ZStack
             frame={{ width, height: totalHeight, alignment: "center" as any }}
-            background={colors.keyboardBackground as any}
           >
+            <VStack
+              frame={{ width, height: totalHeight }}
+              background={keyboardBackgroundStyle(colors.keyboardBackground) as any}
+              allowsHitTesting={false}
+            />
             {auxiliarySurface
               ? (
                 <AuxiliarySurfaceHost
