@@ -1,12 +1,6 @@
-import { HStack, LazyVStack, ScrollView, Text, useEffect, useRef, VStack, ZStack } from "scripting";
+import { Button, LazyVGrid, ScrollView, Text, useEffect, useRef, ZStack } from "scripting";
 import type { KeyboardSkin, SkinColors } from "../../contracts/skin";
 import { firstDisplayLine, type CandidateEntry } from "../../core/rime/CandidateView";
-
-function chunk<T>(items: readonly T[], size: number): T[][] {
-  const rows: T[][] = [];
-  for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
-  return rows;
-}
 
 type Props = {
   candidates: CandidateEntry[];
@@ -19,37 +13,65 @@ type Props = {
   onLoadMore: () => void;
 };
 
-const LOAD_MORE_DEBOUNCE_MS = 180;
+const COLUMN_COUNT = 4;
+const PREFETCH_ROWS = 3;
+const LOAD_MORE_DELAY_MS = 180;
+const HIT_SURFACE = "rgba(0,0,0,0.001)";
 
+/**
+ * A single, gapless scroll-target grid. Each cell owns its entire rectangle,
+ * including the visual space between neighboring words and rows. We do not
+ * create actual HStack/LazyVStack spacing gaps that cannot receive touches.
+ */
 export function ExpandedCandidatePanel(props: Props) {
-  const columns = 4;
-  const spacing = props.skin.visuals.expandedCandidateItemSpacing;
-  const cellHeight = props.skin.visuals.expandedCandidateHeight;
   const contentWidth = props.width;
-  const cellWidth = Math.max(0, (contentWidth - spacing * (columns - 1)) / columns);
-  const rows = chunk(props.candidates, columns);
-  const lastRowIndex = rows.length - 1;
-  const loadMoreTimerRef = useRef<any>(null);
+  const cellWidth = contentWidth / COLUMN_COUNT;
+  const visualGap = Math.max(0, props.skin.visuals.expandedCandidateItemSpacing);
+  const cellHeight = props.skin.visuals.expandedCandidateHeight + visualGap;
+  const columns = Array.from({ length: COLUMN_COUNT }, () => ({
+    size: cellWidth,
+    spacing: 0
+  }));
 
-  useEffect(() => {
-    return () => {
-      if (loadMoreTimerRef.current != null) {
-        clearTimeout(loadMoreTimerRef.current);
-        loadMoreTimerRef.current = null;
-      }
-    };
-  }, []);
+  // Fill the final row with inert cells so even its unused area participates
+  // in the ScrollView's hit-testing surface.
+  const cells: Array<CandidateEntry | null> = [...props.candidates];
+  while (cells.length % COLUMN_COUNT !== 0) cells.push(null);
 
-  function scheduleLoadMore(visibleIds: number[]) {
-    if (loadMoreTimerRef.current != null) {
-      clearTimeout(loadMoreTimerRef.current);
-      loadMoreTimerRef.current = null;
+  const loadTimerRef = useRef<any>(null);
+  const loadRequestedCountRef = useRef(-1);
+  const onLoadMoreRef = useRef(props.onLoadMore);
+  onLoadMoreRef.current = props.onLoadMore;
+
+  function cancelPendingLoad() {
+    if (loadTimerRef.current != null) {
+      clearTimeout(loadTimerRef.current);
+      loadTimerRef.current = null;
     }
-    if (!props.hasMore || lastRowIndex < 0 || !visibleIds.includes(lastRowIndex)) return;
-    loadMoreTimerRef.current = setTimeout(() => {
-      loadMoreTimerRef.current = null;
-      props.onLoadMore();
-    }, LOAD_MORE_DEBOUNCE_MS);
+  }
+
+  useEffect(() => () => cancelPendingLoad(), []);
+
+  function onVisibleCandidatesChanged(visibleIds: number[]) {
+    const count = props.candidates.length;
+    const prefetchFrom = Math.max(0, count - COLUMN_COUNT * (PREFETCH_ROWS + 1));
+    const nearEnd = visibleIds.some((index) =>
+      Number.isInteger(index) && index >= prefetchFrom && index < count
+    );
+
+    if (!props.hasMore || count === 0 || !nearEnd) {
+      cancelPendingLoad();
+      return;
+    }
+    if (loadTimerRef.current != null || loadRequestedCountRef.current === count) return;
+
+    // Visibility updates are synchronous during dragging. Do not run Rime's
+    // potentially expensive page scan directly inside the scroll callback.
+    loadTimerRef.current = setTimeout(() => {
+      loadTimerRef.current = null;
+      loadRequestedCountRef.current = count;
+      onLoadMoreRef.current();
+    }, LOAD_MORE_DELAY_MS);
   }
 
   return (
@@ -57,44 +79,63 @@ export function ExpandedCandidatePanel(props: Props) {
       axes="vertical"
       scrollIndicator="hidden"
       frame={{ width: contentWidth, height: props.height }}
+      background={HIT_SURFACE as any}
+      contentShape="rect"
       onScrollTargetVisibilityChange={{
         idType: "number",
         threshold: 0.5,
-        onChanged: (ids) => scheduleLoadMore(ids as number[])
+        onChanged: (ids) => onVisibleCandidatesChanged(ids as number[])
       }}
     >
-      <LazyVStack spacing={spacing} frame={{ width: contentWidth }} scrollTargetLayout>
-        {rows.map((row, rowIndex) => (
-          <HStack
-            key={rowIndex}
-            spacing={spacing}
-            frame={{ width: contentWidth, height: cellHeight }}
-          >
-            {row.map((entry) => (
-              <ZStack
-                key={`candidate-${entry.originalIndex}-${entry.candidate.text}`}
-                frame={{ width: cellWidth, height: cellHeight }}
-                foregroundStyle={props.colors.foreground as any}
+      <LazyVGrid
+        columns={columns}
+        alignment="leading"
+        spacing={0}
+        frame={{ width: contentWidth }}
+        background={HIT_SURFACE as any}
+        contentShape="rect"
+        scrollTargetLayout
+      >
+        {cells.map((entry, index) =>
+          entry
+            ? (
+              <Button
+                key={index}
+                action={() => props.onSelect(entry.originalIndex)}
+                buttonStyle="plain"
                 contentShape="rect"
-                onTapGesture={() => props.onSelect(entry.originalIndex)}
+                frame={{ width: cellWidth, height: cellHeight }}
               >
-                <Text
-                  font={props.skin.typography.candidate.fontSize}
-                  lineLimit={1}
-                  minimumScaleFactor={0.65}
+                <ZStack
+                  frame={{ width: cellWidth, height: cellHeight }}
+                  background={HIT_SURFACE as any}
+                  contentShape="rect"
+                  foregroundStyle={props.colors.foreground as any}
                 >
-                  {firstDisplayLine(entry.candidate.text)}
-                </Text>
-              </ZStack>
-            ))}
-            {row.length < columns
-              ? Array.from({ length: columns - row.length }).map((_, index) => (
-                  <VStack key={`candidate-empty-${rowIndex}-${index}`} frame={{ width: cellWidth, height: cellHeight }} />
-                ))
-              : null}
-          </HStack>
-        ))}
-      </LazyVStack>
+                  <Text
+                    font={props.skin.typography.candidate.fontSize}
+                    lineLimit={1}
+                    minimumScaleFactor={0.65}
+                    frame={{
+                      width: Math.max(0, cellWidth - visualGap),
+                      height: Math.max(0, cellHeight - visualGap)
+                    }}
+                  >
+                    {firstDisplayLine(entry.candidate.text)}
+                  </Text>
+                </ZStack>
+              </Button>
+            )
+            : (
+              <ZStack
+                key={index}
+                frame={{ width: cellWidth, height: cellHeight }}
+                background={HIT_SURFACE as any}
+                contentShape="rect"
+              />
+            )
+        )}
+      </LazyVGrid>
     </ScrollView>
   );
 }
