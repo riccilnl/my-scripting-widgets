@@ -1,2 +1,2 @@
-75d19e44a2b2aec7d42cefb454ca091015a75e8aa4338a6b82b5239502e275d2  Rime-startup-trace-0.3.46-preview.scripting
-75d19e44a2b2aec7d42cefb454ca091015a75e8aa4338a6b82b5239502e275d2  Rime-startup-trace-latest.zip
+70c935a445f5271ec878262b228e86fed177fde5a3fd95d92bf9e73d2124c733  Rime-startup-trace-0.3.47-preview.scripting
+70c935a445f5271ec878262b228e86fed177fde5a3fd95d92bf9e73d2124c733  Rime-startup-trace-latest.zip
