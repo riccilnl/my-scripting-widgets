@@ -868,3 +868,169 @@ test("keyboard teardown invalidates native haptics lifecycle callbacks", async (
   assert.equal(live.onStopped, null);
   assert.equal(live.onReset, null);
 });
+
+function mockTraceStorage() {
+  const map = new Map();
+  const counters = { reads: 0, writes: 0 };
+  const Storage = {
+    get(key, opts) {
+      assert.equal(opts.shared, true);
+      counters.reads++;
+      return map.get(key) ?? null;
+    },
+    set(key, value, opts) {
+      assert.equal(opts.shared, true);
+      counters.writes++;
+      map.set(key, value);
+      return true;
+    }
+  };
+  return { map, counters, Storage };
+}
+
+test("startup trace is disabled by default, with zero events and no writes", () => {
+  const env = mockTraceStorage();
+  const { createStartupTrace, STARTUP_TRACE_LAST_KEY } =
+    load("keyboard/runtime/StartupTrace.ts",
+      ["createStartupTrace", "STARTUP_TRACE_LAST_KEY"], { Storage: env.Storage });
+  assert.equal(createStartupTrace(), null);
+  assert.equal(env.counters.reads, 1);
+  assert.equal(env.counters.writes, 0);
+  assert.equal(env.map.has(STARTUP_TRACE_LAST_KEY), false);
+});
+
+test("startup trace writes exactly once on ready, with safe timing records", () => {
+  const env = mockTraceStorage();
+  let time = 1000;
+  const clock = { now: () => time };
+  const exports = load("keyboard/runtime/StartupTrace.ts", [
+    "STARTUP_TRACE_ENABLED_KEY", "STARTUP_TRACE_LAST_KEY",
+    "createStartupTrace", "readLastStartupTrace", "setStartupTraceEnabled",
+    "clearLastStartupTrace", "isStartupTraceEnabled"
+  ], { Storage: env.Storage, performance: clock });
+  assert.equal(exports.setStartupTraceEnabled(true), true);
+  assert.equal(exports.isStartupTraceEnabled(), true);
+  const trace = exports.createStartupTrace();
+  trace.setLayout("qwerty");
+  trace.mark("ui.settings.begin");
+  time += 12.24;
+  trace.mark("ui.settings.end");
+  time += 34.32;
+  trace.mark("rime.runtimeReady");
+  trace.finish("ready");
+  trace.mark("ignoredAfterFinish");
+  trace.finish("cancelled");
+  const latest = exports.readLastStartupTrace();
+  assert.equal(latest.version, 1);
+  assert.equal(latest.layout, "qwerty");
+  assert.equal(latest.outcome, "ready");
+  assert.equal(latest.marks.length, 4);
+  assert.deepEqual(Array.from(latest.marks, e => e.phase), [
+    "ui.settings.begin", "ui.settings.end", "rime.runtimeReady", "startup.ready"
+  ]);
+  assert.equal(latest.marks[0].elapsedMs, 0);
+  assert.equal(latest.marks[1].elapsedMs, 12.2);
+  assert.equal(latest.marks[2].elapsedMs, 46.6);
+  assert.equal(env.counters.writes, 2);
+  assert.equal(JSON.stringify(latest).includes("preedit"), false);
+  assert.equal(JSON.stringify(latest).includes("candidate"), false);
+  assert.equal(exports.clearLastStartupTrace(), true);
+  assert.equal(exports.readLastStartupTrace(), null);
+});
+
+test("startup trace handles cancellation, storage failures, and bounds retained events", () => {
+  const env = mockTraceStorage();
+  env.map.set("rime_keyboard_startup_trace_enabled_v1", true);
+  const { createStartupTrace, readLastStartupTrace } =
+    load("keyboard/runtime/StartupTrace.ts",
+      ["createStartupTrace", "readLastStartupTrace"], { Storage: env.Storage });
+  const trace = createStartupTrace();
+  trace.setLayout("t9");
+  for (let i = 0; i < 100; i++) trace.mark("rime.schemas.begin");
+  trace.finish("cancelled");
+  const stored = readLastStartupTrace();
+  assert.equal(stored.outcome, "cancelled");
+  assert.equal(stored.marks.length, 48);
+  assert.ok(stored.marks.every(item => item.phase.length <= 64));
+  const noStorage = load("keyboard/runtime/StartupTrace.ts",
+    ["createStartupTrace", "setStartupTraceEnabled", "readLastStartupTrace"],
+    { Storage: { get() { throw Error("Unavailable"); }, set() { throw Error("Unavailable"); } } });
+  assert.equal(noStorage.createStartupTrace(), null);
+  assert.equal(noStorage.setStartupTraceEnabled(true), false);
+  assert.equal(noStorage.readLastStartupTrace(), null);
+});
+
+test("startup view diagnostics remain decoupled from production UI and avoid first-paint claims", () => {
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  const settings = fs.readFileSync(path.join(__dirname, "../ui/settings/SettingsHomePage.tsx"), "utf8");
+  const diagnostics = fs.readFileSync(path.join(__dirname, "../ui/settings/StartupDiagnosticsPage.tsx"), "utf8");
+  assert.match(root, /const startupTrace = createStartupTrace\(\)/);
+  assert.match(root, /startupTrace\?\.mark\("ui\.present\.begin"\)/);
+  assert.match(root, /startupTrace\?\.mark\("ui\.present\.return"\)/);
+  assert.match(root, /startupTrace\?\.mark\("ui\.firstPublished"\)/);
+  assert.match(root, /startupTrace\?\.finish\("ready"\)/);
+  assert.match(root, /startupTrace\?\.finish\("error"\)/);
+  assert.match(root, /startupTrace\?\.finish\("cancelled"\)/);
+  assert.match(settings, /<NavigationLink title="性能诊断" destination=\{<StartupDiagnosticsPage \/>\} \/>/);
+  assert.match(diagnostics, /呈现接口返回，不等于实际画面出现/);
+  assert.doesNotMatch(diagnostics, /Clipboard|candidate\.text|preedit\.text/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../keyboard/runtime/RimeRuntimeCoordinator.ts"), "utf8"),
+    /trace\?\.mark\("rime\.schemas\.begin"\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../core/rime/T9BridgeRuntime.ts"), "utf8"),
+    /trace\?\.mark\("t9\.fastpath"\)/);
+});
+
+test("warm Rime startup stages exclude setup and T9, cold startup includes setup", async () => {
+  const phases = [];
+  const warm = runtimeFixture();
+  const warmEngine = await warm.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    startupTrace: { mark: name => phases.push(name) }
+  });
+  warmEngine.close();
+  assert.ok(phases.indexOf("rime.schemas.begin") < phases.indexOf("rime.schemas.end"));
+  assert.ok(phases.indexOf("rime.session.begin") < phases.indexOf("rime.session.end"));
+  assert.ok(phases.indexOf("rime.session.end") < phases.indexOf("rime.runtimeReady"));
+  assert.ok(phases.includes("rime.setup.skipped"));
+  assert.ok(!phases.some(name => name.startsWith("t9.")));
+  const cold = runtimeFixture({ setupPending: true });
+  const names = [];
+  const pending = cold.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    startupTrace: { mark: name => names.push(name) }
+  });
+  assert.deepEqual(names, ["rime.setup.begin"]);
+  cold.resolveSetup();
+  const coldEngine = await pending;
+  coldEngine.close();
+  assert.ok(names.indexOf("rime.setup.end") < names.indexOf("rime.schemas.begin"));
+  assert.ok(names.includes("rime.runtimeReady"));
+});
+
+test("cancelled startup has no runtime ready milestone and closes no unused session", async () => {
+  const events = [];
+  const f = runtimeFixture({ setupPending: true });
+  const waiting = f.prepareKeyboardRimeRuntime({
+    chineseLayout: "t9", preferredSchemaId: "wanxiang_t9",
+    isCancelled: f.isCancelled,
+    startupTrace: { mark: name => events.push(name) }
+  });
+  f.setCancelled();
+  f.resolveSetup();
+  await assert.rejects(waiting);
+  assert.deepEqual(events, ["rime.setup.begin", "rime.setup.end"]);
+  assert.equal(f.stats.sessions, 0);
+});
+
+test("unready Rime-bound input is marked once without storing text or replaying keys", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const segment = source.slice(source.indexOf("    const controller = controllerRef.current;"),
+    source.indexOf("    const effect = controller.dispatch(command,"));
+  assert.match(segment, /if \(!controller\)/);
+  assert.match(segment, /if \(!firstInputBeforeReadyRef\.current\)/);
+  assert.match(segment, /props\.startupTrace\?\.mark\("input\.firstBeforeReady"\)/);
+  assert.doesNotMatch(segment, /command\.text|command\.index|setTimeout\(|queue|replay/);
+  const firstIndex = source.indexOf('props.startupTrace?.mark("input.firstBeforeReady")');
+  const lastIndex = source.indexOf("    const effect = controller.dispatch(command,");
+  assert.ok(firstIndex >= 0 && firstIndex < lastIndex);
+});

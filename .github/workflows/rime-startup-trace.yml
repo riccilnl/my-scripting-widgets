@@ -1,0 +1,69 @@
+name: Publish Rime startup diagnostics preview
+
+on:
+  push:
+    branches:
+      - "perf/rime-startup-trace"
+    paths:
+      - "scripts/rime输入法/**"
+      - ".github/workflows/rime-startup-trace.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rime-startup-trace
+  cancel-in-progress: false
+
+jobs:
+  build-startup-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout preview branch including frozen release
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate keyboard behavior and packaging
+        run: |
+          node --test scripts/rime输入法/tests/runtime.test.cjs
+          node --test scripts/update_links.test.js
+      - name: Build isolated startup diagnostics keyboard
+        run: python3 -B scripts/rime输入法/tests/create_startup_diagnostic_preview.py
+      - name: Verify every packaged source file
+        run: python3 -B scripts/rime输入法/tests/verify_startup_diagnostic_preview.py
+      - name: Commit diagnostic installation package only on preview branch
+        run: |
+          set -eu
+          mkdir -p previews/rime-startup-20261013
+          cp .git/perf-preview/Rime-startup-trace-0.3.45-preview.scripting previews/rime-startup-20261013/
+          (cd previews/rime-startup-20261013 &&
+            sha256sum Rime-startup-trace-0.3.45-preview.scripting > SHA256SUMS.txt)
+          cat > previews/rime-startup-20261013/README.md <<'EOF'
+          # Rime startup diagnostics preview
+
+          Install the independent Scripting project `Rime启动诊断测试` (0.3.45 preview).
+          Open its settings -> 性能诊断 -> 启用启动诊断.
+          Dismiss and reopen the keyboard, then refresh this page.
+
+          Records only Rime startup phase names, elapsed times, layout and success/failure/cancel.
+          It never records text, candidates, paths or full schema identifiers.
+          Default OFF; only the most recent startup is persisted.
+          The displayed "present.return" does NOT mean the UI frame became visible.
+          This package may share Rime dictionaries, schemas and App Group data with
+          the official keyboard. Avoid schema deployment/update while testing.
+
+          Official main 0.3.44 and the earlier A/B packages are unchanged.
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- previews/rime-startup-20261013
+          if ! git diff --cached --quiet; then
+            git commit -m "build(rime): publish independent startup diagnostics preview"
+            git push origin HEAD:refs/heads/perf/rime-startup-trace
+          fi

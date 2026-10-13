@@ -40,6 +40,7 @@ import { displayedPreeditCursor } from "./preedit/displayedPreeditCursor";
 import { t9DisplayedPreedit } from "./preedit/t9DisplayedPreedit";
 import { disposeKeyboardHaptics, playKeyboardHaptic } from "./feedback/haptics";
 import { prepareKeyboardRimeRuntime } from "./runtime/RimeRuntimeCoordinator";
+import { createStartupTrace, type StartupTrace } from "./runtime/StartupTrace";
 import { clearKeyboardActionQueue, dispatchKeyboardAction } from "./input/actionQueue";
 import { applyRimeHostText } from "./input/RimeHostTextBridge";
 import { executeHostCommand, isHostCommand } from "./toolbar/hostCommand";
@@ -94,6 +95,7 @@ function KeyboardRoot(props: {
   initialSettings: KeyboardRuntimeSettings;
   layout: ResolvedKeyboardLayout;
   skin: KeyboardSkin;
+  startupTrace: StartupTrace | null;
 }) {
   const skin = props.skin;
   const colorScheme = useColorScheme();
@@ -130,6 +132,8 @@ function KeyboardRoot(props: {
   }
   const keyCatalog = keyCatalogRef.current;
   const [ready, setReady] = useState(false);
+  // Diagnostic-only timestamp for the first Rime-bound tap before setup ends.
+  const firstInputBeforeReadyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CandidateEntry[]>([]);
   const [highlightedCandidateIndex, setHighlightedCandidateIndex] = useState(0);
@@ -154,6 +158,8 @@ function KeyboardRoot(props: {
 
   useEffect(() => {
     let disposed = false;
+    const startupTrace = props.startupTrace;
+    startupTrace?.mark("ui.effect.begin");
     clearKeyboardActionQueue();
     const chineseLayout = chineseLayoutRef.current;
     const preferredSchemaId = initialSettings.schemes[chineseLayout];
@@ -161,7 +167,8 @@ function KeyboardRoot(props: {
     void prepareKeyboardRimeRuntime({
       chineseLayout,
       preferredSchemaId,
-      isCancelled: () => disposed
+      isCancelled: () => disposed,
+      startupTrace
     })
       .then((engine) => {
         if (disposed) {
@@ -172,14 +179,21 @@ function KeyboardRoot(props: {
         controllerRef.current = new InputController(engine);
         setAsciiMode(engine.asciiMode);
         setReady(true);
+        startupTrace?.mark("ui.readyRequested");
         publish(engine.peek());
+        startupTrace?.mark("ui.firstPublished");
+        startupTrace?.finish("ready");
       })
       .catch((error) => {
-        if (!disposed) setError((error as Error)?.message ?? String(error));
+        if (!disposed) {
+          setError((error as Error)?.message ?? String(error));
+          startupTrace?.finish("error");
+        }
       });
 
     return () => {
       disposed = true;
+      startupTrace?.finish("cancelled");
       controllerRef.current = null;
       try { engineRef.current?.close(); } catch {}
       engineRef.current = null;
@@ -283,7 +297,13 @@ function KeyboardRoot(props: {
       setRecentSymbols((history) => rememberRecentSymbol(history, command.text));
     }
     const controller = controllerRef.current;
-    if (!controller) return;
+    if (!controller) {
+      if (!firstInputBeforeReadyRef.current) {
+        firstInputBeforeReadyRef.current = true;
+        props.startupTrace?.mark("input.firstBeforeReady");
+      }
+      return;
+    }
     const effect = controller.dispatch(command, {
       shifted: shiftedRef.current,
       capsLocked: capsLockedRef.current,
@@ -940,17 +960,31 @@ function KeyboardRoot(props: {
 }
 
 function main() {
-  const initialSettings = readKeyboardRuntimeSettings();
-  const skin = resolveSkin(initialSettings.skinId);
-  const layout = resolveKeyboardLayout(initialSettings.layoutPreferences, skin.layoutDefaults);
-  try { CustomKeyboard.setToolbarVisible(false); } catch {}
+  // Opt-in only: tracing begins when the JS entrypoint executes, not while
+  // Scripting loads/parses its statically imported modules.
+  const startupTrace = createStartupTrace();
   try {
-    const keyboard = CustomKeyboard as any;
-    if (typeof keyboard.setHasDictationKey === "function") keyboard.setHasDictationKey(false);
-    else keyboard.hasDictationKey = false;
-  } catch {}
-  try { CustomKeyboard.requestHeight(layout.requestedHeight); } catch {}
-  CustomKeyboard.present(<KeyboardRoot initialSettings={initialSettings} layout={layout} skin={skin} />);
+    startupTrace?.mark("ui.settings.begin");
+    const initialSettings = readKeyboardRuntimeSettings();
+    startupTrace?.setLayout(initialSettings.chineseLayout);
+    startupTrace?.mark("ui.settings.end");
+    const skin = resolveSkin(initialSettings.skinId);
+    const layout = resolveKeyboardLayout(initialSettings.layoutPreferences, skin.layoutDefaults);
+    startupTrace?.mark("ui.layoutReady");
+    try { CustomKeyboard.setToolbarVisible(false); } catch {}
+    try {
+      const keyboard = CustomKeyboard as any;
+      if (typeof keyboard.setHasDictationKey === "function") keyboard.setHasDictationKey(false);
+      else keyboard.hasDictationKey = false;
+    } catch {}
+    try { CustomKeyboard.requestHeight(layout.requestedHeight); } catch {}
+    startupTrace?.mark("ui.present.begin");
+    CustomKeyboard.present(<KeyboardRoot initialSettings={initialSettings} layout={layout} skin={skin} startupTrace={startupTrace} />);
+    startupTrace?.mark("ui.present.return");
+  } catch (error) {
+    startupTrace?.finish("error");
+    throw error;
+  }
 }
 
 main();

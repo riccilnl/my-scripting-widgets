@@ -30,6 +30,7 @@ import { FunctionInstructionsPage } from "./FunctionInstructionsPage";
 import { ClipboardSettingsPage } from "./ClipboardSettingsPage";
 import { CommonPhrasesSettingsPage } from "./CommonPhrasesSettingsPage";
 import { WanxiangManagerPage } from "./WanxiangManagerPage";
+import { StartupDiagnosticsPage } from "./StartupDiagnosticsPage";
 
 function availableFor(
   layout: ChineseLayoutId,
@@ -169,7 +170,7 @@ export function SettingsHomePage() {
 
       <Section header={<Text>其他</Text>}>
         <NavigationLink title="功能指令" destination={<FunctionInstructionsPage />} />
-        <Text>性能诊断</Text>
+        <NavigationLink title="性能诊断" destination={<StartupDiagnosticsPage />} />
         <Text>Rime部署</Text>
       </Section>
     </List>

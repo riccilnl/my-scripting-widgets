@@ -51,13 +51,15 @@ def official_files() -> dict[str, bytes]:
 
 
 def write_package(source: dict[str, bytes], folder: str, label: str,
-                  version: str, filename: str) -> dict[str, object]:
+                  version: str, filename: str,
+                  english_name: str | None = None) -> dict[str, object]:
     files = dict(source)
     manifest = json.loads(files["script.json"])
     manifest["name"] = folder
     manifest["version"] = version
     manifest.setdefault("localizedNames", {})["zh"] = label
-    manifest["localizedNames"]["en"] = "Rime Baseline Test" if "基线" in folder else "Rime Performance Test"
+    manifest["localizedNames"]["en"] = (english_name if english_name is not None
+        else "Rime Baseline Test" if "基线" in folder else "Rime Performance Test")
     files["script.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
     if not files.get(manifest["entry"]):
         raise AssertionError("Entry missing from test package")
