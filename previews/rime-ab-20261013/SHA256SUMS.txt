@@ -1,0 +1,2 @@
+0cd8aed368f674215db400957bfd0f76bd0fc8322e1bdc9b537db8c8e7a5ff68  Rime-baseline-0.3.44.scripting
+23ca05eff4f739c4f7017d53e16d675fbfd231591bc2a73199449ceb8e106fe9  Rime-performance-0.3.45-preview.scripting
