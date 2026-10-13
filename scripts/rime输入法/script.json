@@ -4,7 +4,7 @@
   "runInApp": false,
   "author": {
     "homepage": null,
-    "name": "rime输入法",
+    "name": "Ricci",
     "email": null
   },
   "description": "Aligns Wanxiang Lite/T9 updates with the proven Wanxiang assistant flow: tracked old-file cleanup, overwrite-safe install, and Scripting deploy with fullCheck=false.",
