@@ -7,9 +7,13 @@ WARNING: The Scripting importer may persist the address that was
 actually imported into remoteResource.url, overriding the manifest.
 Never give users a versioned .scripting or immutable commit link as
 the recommended auto-update installation URL.
-Versioned .scripting assets are release snapshots, not subscriptions.
-Each future release MUST increment the version while retaining the
-stable latest.zip URL. Interval 3600 seconds controls app-side checks.
+The ORIGINAL 0.3.46-preview.scripting URL was pinned on iPhone.
+It is now a MUTABLE compatibility alias for latest.zip, NOT a frozen
+v0.3.46 snapshot. Keep refreshing BOTH latest.zip and this alias
+on EVERY future test release until the phone demonstrably changes.
+Other versioned .scripting files remain snapshots; never give them
+as auto-update subscription links. Each future test release MUST
+increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
