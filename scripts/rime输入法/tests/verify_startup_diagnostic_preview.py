@@ -6,7 +6,7 @@ import json
 import zipfile
 from pathlib import Path
 from create_perf_preview import OUT, source_files, official_files
-from create_startup_diagnostic_preview import FILENAME, PROJECT
+from create_startup_diagnostic_preview import (FILENAME, PROJECT, REMOTE_ARCHIVE_NAME, REMOTE_ARCHIVE_URL, AUTO_UPDATE_INTERVAL)
 
 
 def verify():
@@ -14,7 +14,13 @@ def verify():
     target = OUT / FILENAME
     source = source_files()
     assert Path(info["path"]) == target
-    assert info["project_name"] == PROJECT and info["version"] == "0.3.45"
+    assert info["project_name"] == PROJECT and info["version"] == "0.3.46"
+    # Auto-update MUST fetch the mutable test branch, never an immutable Git SHA.
+    assert REMOTE_ARCHIVE_URL.endswith("/" + REMOTE_ARCHIVE_NAME)
+    assert "/refs/heads/perf/rime-startup-trace/" in REMOTE_ARCHIVE_URL
+    assert AUTO_UPDATE_INTERVAL == 3600
+    archive_alias = OUT / REMOTE_ARCHIVE_NAME
+    assert archive_alias.read_bytes() == target.read_bytes()
     assert info["size_bytes"] == target.stat().st_size
     assert info["sha256"] == hashlib.sha256(target.read_bytes()).hexdigest()
     assert len(source) == info["entries"]
@@ -36,10 +42,15 @@ def verify():
             if relative == "script.json":
                 data = json.loads(actual)
                 baseline = json.loads(expected)
-                assert data["name"] == PROJECT and data["version"] == "0.3.45"
+                assert data["name"] == PROJECT and data["version"] == "0.3.46"
+                assert data["remoteResource"] == {
+                    "url": REMOTE_ARCHIVE_URL,
+                    "autoUpdateInterval": AUTO_UPDATE_INTERVAL
+                }
+                assert baseline.get("remoteResource") is None
                 assert data["localizedNames"]["en"] == "Rime Startup Diagnostics Test"
                 assert data["entry"] == baseline["entry"]
-                for key in ("name", "version", "localizedNames"):
+                for key in ("name", "version", "localizedNames", "remoteResource"):
                     data.pop(key, None)
                     baseline.pop(key, None)
                 assert data == baseline
