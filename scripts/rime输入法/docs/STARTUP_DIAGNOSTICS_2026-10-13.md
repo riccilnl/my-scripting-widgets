@@ -48,3 +48,12 @@
 - 使用官方 Pasteboard.setString 写入剪贴板，等待完成后反馈成功；失败或无记录均有提示。
 - 不记录用户输入和候选词；纯报告格式化代码仅由设置页导入，不影响键盘初始加载链。
 - 发布版本更新至 0.3.47，复用相同的 remoteResource/latest.zip 自动更新地址；正式 0.3.44 不变。
+
+## 2026-10-13 iPhone 自动更新失败的真机复盘
+
+- 手机 MCP 实际读取 Rime启动诊断测试 0.3.46 的 script.json，更新地址指向 Rime-startup-trace-0.3.46-preview.scripting，而非构建包内声明的 latest.zip。手机还保存了 remoteResource.hash。
+- 更新失败直接原因：手机实际跟踪的是永远不变的定版安装文件。远端固定 latest.zip 已通过实际 HTTP 核验含 0.3.47。
+- 永久规范：对用户只提供当前测试分支固定的 latest.zip URL 作为安装入口；定版 .scripting 与锁 SHA 的地址仅用于下载快照，不能作为自动更新订阅安装地址。
+- 通过 Scripting MCP 精确编辑手机现有 script.json 的 remoteResource.url 为 latest.zip；保留 hash、3600 秒间隔和 0.3.46 版本。重新读取验证成功，scripting_validate 零错误。
+- 本次尚须手机端主动检查更新后再读实际版本，不能在服务器构建成功时就推断手机更新成功。remoteResource.hash 算法未证实，不擅自清除。
+- 不改变正式 0.3.44、原有键盘、词库或触摸行为。

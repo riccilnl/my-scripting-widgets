@@ -48,13 +48,16 @@ jobs:
           cat > previews/rime-startup-20261013/README.md <<'EOF'
           # Rime startup diagnostics preview
 
-          Install the independent Scripting project Rime启动诊断测试 (0.3.47 preview).
-          Its script.json remoteResource points to the stable
-          Rime-startup-trace-latest.zip on this test branch.
-          Auto-update checks are configured at 3600 seconds; Scripting decides
-          when checks actually run, not guaranteed background delivery.
-          Reimport 0.3.46 ONCE if you previously installed a 0.3.45 preview
-          without the remoteResource setting. Future builds must bump version.
+          Install/update Rime启动诊断测试 ONLY from this stable ZIP URL:
+          https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/perf/rime-startup-trace/previews/rime-startup-20261013/Rime-startup-trace-latest.zip
+
+          WARNING: The Scripting importer may persist the address that was
+          actually imported into remoteResource.url, overriding the manifest.
+          Never give users a versioned .scripting or immutable commit link as
+          the recommended auto-update installation URL.
+          Versioned .scripting assets are release snapshots, not subscriptions.
+          Each future release MUST increment the version while retaining the
+          stable latest.zip URL. Interval 3600 seconds controls app-side checks.
           Open its settings -> 性能诊断 -> 启用启动诊断.
           Dismiss and reopen the keyboard, then refresh this page.
 
