@@ -24,4 +24,4 @@ The displayed "present.return" does NOT mean the UI frame became visible.
 This package may share Rime dictionaries, schemas and App Group data with
 the official keyboard. Avoid schema deployment/update while testing.
 
-Official main 0.3.49 and the earlier A/B packages are unchanged.
+Official main 0.3.52 and the earlier A/B packages are unchanged.
