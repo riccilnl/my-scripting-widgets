@@ -1,0 +1,2 @@
+835eb326b0c2d37bb67cabb19912ca7132e3fc7f4bbcfcb6e89644640873517e  Rime-startup-lazy-0.3.54.scripting
+d8946f7df4f9feceea5469a4184b915f035d7c2ac99a2a0e2b246db40f21f5c1  Rime-startup-plain-0.3.54.scripting
