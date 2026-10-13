@@ -41,8 +41,8 @@ function createProject(root, name, manifest = { name, entry: 'index.tsx' }) {
   return projectPath;
 }
 
-function runPackager(root) {
-  return spawnSync(process.execPath, [SCRIPT_PATH], {
+function runPackager(root, args = []) {
+  return spawnSync(process.execPath, [SCRIPT_PATH, ...args], {
     cwd: root,
     encoding: 'utf8',
   });
@@ -129,4 +129,37 @@ test('keeps the existing filename sort order for install links', (t) => {
     '新浪美股.scripting',
     '财联社.scripting',
   ]);
+});
+
+test('publishes only the selected source project and excludes development files', (t) => {
+  const root = createRepository();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const selected = createProject(root, 'rime输入法');
+  createProject(root, '其他项目');
+  fs.mkdirSync(path.join(selected, 'docs'));
+  fs.mkdirSync(path.join(selected, 'tests'));
+  fs.writeFileSync(path.join(selected, 'docs', 'audit.md'), 'private development notes');
+  fs.writeFileSync(path.join(selected, 'tests', 'runtime.test.cjs'), 'test code');
+  const preserved = path.join(root, '其他项目.scripting');
+  fs.writeFileSync(preserved, 'old untouched package');
+
+  const result = runPackager(root, ['--project', 'rime输入法']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(preserved, 'utf8'), 'old untouched package');
+  const entries = listArchive(path.join(root, 'rime输入法.scripting'));
+  assert.equal(entries.some((name) => name.endsWith('/src/feature.ts')), true);
+  assert.equal(entries.some((name) => name.includes('/docs/')), false);
+  assert.equal(entries.some((name) => name.includes('/tests/')), false);
+});
+
+test('unknown project cannot overwrite existing packages', (t) => {
+  const root = createRepository();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  createProject(root, 'rime输入法');
+  const existing = path.join(root, 'rime输入法.scripting');
+  fs.writeFileSync(existing, 'known package');
+  const result = runPackager(root, ['--project', 'not-a-project']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /未知源码项目/);
+  assert.equal(fs.readFileSync(existing, 'utf8'), 'known package');
 });

@@ -1,39 +1,62 @@
-name: Update Share Links
+name: Build Scripting Rime
 
 on:
   push:
+    branches: [main]
     paths:
-      - "*.scripting"
-      - "**/*.scripting"
-    branches:
-      - main
+      - "scripts/rime输入法/**"
+      - "scripts/update_links.js"
+      - "scripts/update_links.test.js"
+      - ".github/workflows/update_links.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scripting-rime-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
+          persist-credentials: true
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Generate links and update README
-        run: node scripts/update_links.js
-
-      - name: Commit and push changes
+          node-version: '22'
+      - name: Validate packager and keyboard runtime
+        run: |
+          node --test scripts/update_links.test.js
+          node --test scripts/rime输入法/tests/runtime.test.cjs
+      - name: Package only Rime source
+        run: node scripts/update_links.js --project rime输入法
+      - name: Verify packaged keyboard matches committed source
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import zipfile
+          with zipfile.ZipFile('rime输入法.scripting') as archive:
+              names = archive.namelist()
+              for part in ('keyboard/components/CandidateBar.tsx',
+                           'keyboard/components/ExpandedCandidatePanel.tsx'):
+                  source = pathlib.Path('scripts/rime输入法') / part
+                  assert archive.read('rime输入法/' + part) == source.read_bytes(), part
+              assert not any('/' + directory + '/' in name
+                             for name in names for directory in ('docs', 'tests', '.cora', '.colameta'))
+              assert any(name.endswith('/script.json') for name in names)
+          print('RIME_PACKAGE_SOURCE_MATCH_PASS')
+          PY
+      - name: Commit Rime installation artifact
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git diff-index --quiet HEAD || git commit -m "chore: auto update share links"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- 'rime输入法.scripting' README.md
+          if ! git diff --cached --quiet; then
+            git commit -m "build(rime): publish verified Scripting package"
+            git push
+          fi

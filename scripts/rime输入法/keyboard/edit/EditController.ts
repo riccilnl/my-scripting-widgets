@@ -1,5 +1,13 @@
 import type { EditCommand } from "../../contracts/action";
 
+/** iOS deleteBackward removes one user-perceived character at a time. */
+export function backspaceUnitCount(value: string): number {
+  const segmenter = (Intl as any).Segmenter;
+  return typeof segmenter === "function"
+    ? Array.from(new segmenter(undefined, { granularity: "grapheme" }).segment(value)).length
+    : Array.from(value).length;
+}
+
 export type EditEffectPort = {
   clipboardText?: (text: string) => void;
 };
@@ -17,6 +25,12 @@ export class KeyboardEditController {
   private activeSelectAll = false;
   private snapshot: SelectAllSnapshot | null = null;
   private deletedText = "";
+  private disposed = false;
+
+  dispose() {
+    this.disposed = true;
+    this.clearSelectionState();
+  }
 
 
   private setSelectAllActive(active: boolean) {
@@ -45,7 +59,7 @@ export class KeyboardEditController {
     if (!text) return "";
     const before = CustomKeyboard.textBeforeCursor ?? "";
     const after = CustomKeyboard.textAfterCursor ?? "";
-    const deleteCount = before.length + after.length || text.length;
+    const deleteCount = backspaceUnitCount(before) + backspaceUnitCount(after) || backspaceUnitCount(text);
     if (after.length > 0) CustomKeyboard.moveCursor(after.length);
     for (let index = 0; index < deleteCount; index += 1) {
       CustomKeyboard.deleteBackward();
@@ -85,7 +99,7 @@ export class KeyboardEditController {
   }
 
   insertTextReplacingSelectAll(text: string) {
-    if (!text) return;
+    if (this.disposed || !text) return;
     this.consumeSelectionForReplacement();
     CustomKeyboard.insertText(text);
   }
@@ -125,7 +139,7 @@ export class KeyboardEditController {
 
       const after = CustomKeyboard.textAfterCursor?.length ?? 0;
       if (after > 0) CustomKeyboard.moveCursor(after);
-      for (let index = 0; index < text.length; index += 1) {
+      for (let index = 0; index < backspaceUnitCount(text); index += 1) {
         CustomKeyboard.deleteBackward();
       }
       CustomKeyboard.setMarkedText(text, 0, text.length);
@@ -207,6 +221,7 @@ export class KeyboardEditController {
       const text = CustomKeyboard.selectedText ?? "";
       if (!text) return;
       await Pasteboard.setString(text);
+      if (this.disposed) return;
       try { effects?.clipboardText?.(text); } catch {}
       this.clearForExternalAction();
     } catch {}
@@ -217,6 +232,7 @@ export class KeyboardEditController {
       const text = CustomKeyboard.selectedText ?? "";
       if (!text) return;
       await Pasteboard.setString(text);
+      if (this.disposed) return;
       try { effects?.clipboardText?.(text); } catch {}
       this.deletedText = text;
       this.clearForExternalAction();
@@ -227,7 +243,7 @@ export class KeyboardEditController {
   async paste(effects?: EditEffectPort) {
     try {
       const text = await Pasteboard.getString();
-      if (!text) return;
+      if (this.disposed || !text) return;
       try { effects?.clipboardText?.(text); } catch {}
       this.insertTextReplacingSelectAll(text);
     } catch {}
@@ -266,6 +282,7 @@ export class KeyboardEditController {
   }
 
   execute(command: EditCommand, effects?: EditEffectPort) {
+    if (this.disposed) return;
     switch (command.type) {
       case "moveCursor":
         this.moveCursor(command.offset);
@@ -283,14 +300,11 @@ export class KeyboardEditController {
         this.toggleSelectAll();
         return;
       case "copy":
-        void this.copy(effects);
-        return;
+        return this.copy(effects);
       case "cut":
-        void this.cut(effects);
-        return;
+        return this.cut(effects);
       case "paste":
-        void this.paste(effects);
-        return;
+        return this.paste(effects);
       case "deleteAll":
         this.deleteAll();
         return;

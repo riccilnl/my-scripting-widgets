@@ -1,4 +1,5 @@
 import {
+  Button,
   HStack,
   Image,
   ScrollView,
@@ -126,8 +127,19 @@ export function CandidateBar(props: Props) {
               {(proxy: any) => {
                 candidateScrollProxyRef.current = proxy;
                 return (
-                  <ScrollView axes="horizontal" scrollIndicator="hidden" frame={{ width: centerWidth, height: props.height }}>
-                    <HStack spacing={props.skin.visuals.candidateItemSpacing} frame={{ height: props.height }}>
+                  <ScrollView
+                    axes="horizontal"
+                    scrollIndicator="hidden"
+                    frame={{ width: centerWidth, height: props.height }}
+                    background={edgeHitSurface as any}
+                    contentShape="rect"
+                  >
+                    <HStack
+                      spacing={0}
+                      frame={{ height: props.height }}
+                      background={edgeHitSurface as any}
+                      contentShape="rect"
+                    >
                       {props.candidates.slice(0, 12).map((entry, index) => {
                         const displayText = firstDisplayLine(entry.candidate.text);
                         const isSingleCharacter = Array.from(displayText).length === 1;
@@ -136,35 +148,46 @@ export function CandidateBar(props: Props) {
                           : props.skin.visuals.candidateMinTouchWidth;
                         const selected = index === props.highlightedIndex;
                         const candidateKey = `candidate-${entry.originalIndex}-${entry.candidate.text}`;
+                        const visualGap = Math.max(0, props.skin.visuals.candidateItemSpacing);
+                        const cellMinWidth = minTouchWidth + visualGap;
                         return (
-                          <VStack
+                          <Button
                             key={candidateKey}
-                            frame={{ minWidth: minTouchWidth, height: props.height }}
+                            action={() => props.onSelect(entry.originalIndex)}
+                            buttonStyle="plain"
+                            frame={{ minWidth: cellMinWidth, height: props.height }}
                             contentShape="rect"
-                            onTapGesture={() => props.onSelect(entry.originalIndex)}
                           >
                             <ZStack
-                              padding={{
-                                leading: props.skin.visuals.candidateTextHorizontalPadding,
-                                trailing: props.skin.visuals.candidateTextHorizontalPadding,
-                                top: props.skin.visuals.candidateTextVerticalPadding,
-                                bottom: props.skin.visuals.candidateTextVerticalPadding
-                              }}
-                              background={(selected ? props.colors.candidateSelectedBackground : "clear") as any}
-                              clipShape={selected
-                                ? { type: "rect", cornerRadius: props.skin.visuals.candidateSelectedCornerRadius } as any
-                                : undefined}
+                              padding={{ leading: visualGap / 2, trailing: visualGap / 2 }}
+                              frame={{ minWidth: cellMinWidth, height: props.height }}
+                              background={edgeHitSurface as any}
+                              contentShape="rect"
                             >
-                              <Text
-                                font={props.skin.typography.candidate.fontSize}
-                                foregroundStyle={(selected ? props.colors.candidateSelectedForeground : props.colors.candidateForeground) as any}
-                                lineLimit={1}
-                                minimumScaleFactor={0.65}
+                              <ZStack
+                                padding={{
+                                  leading: props.skin.visuals.candidateTextHorizontalPadding,
+                                  trailing: props.skin.visuals.candidateTextHorizontalPadding,
+                                  top: props.skin.visuals.candidateTextVerticalPadding,
+                                  bottom: props.skin.visuals.candidateTextVerticalPadding
+                                }}
+                                background={(selected ? props.colors.candidateSelectedBackground : "clear") as any}
+                                clipShape={selected
+                                  ? { type: "rect", cornerRadius: props.skin.visuals.candidateSelectedCornerRadius } as any
+                                  : undefined}
                               >
-                                {displayText}
-                              </Text>
+                                <Text
+                                  font={props.skin.typography.candidate.fontSize}
+                                  foregroundStyle={(selected ? props.colors.candidateSelectedForeground : props.colors.candidateForeground) as any}
+                                  lineLimit={1}
+                                  minimumScaleFactor={0.65}
+                                  allowsHitTesting={false}
+                                >
+                                  {displayText}
+                                </Text>
+                              </ZStack>
                             </ZStack>
-                          </VStack>
+                          </Button>
                         );
                       })}
                     </HStack>

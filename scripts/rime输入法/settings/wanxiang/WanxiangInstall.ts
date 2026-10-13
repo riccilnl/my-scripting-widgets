@@ -1,4 +1,4 @@
-import { Path, fetch } from "scripting";
+import { Crypto, Path, fetch } from "scripting";
 import { sharedRimeDataDir } from "../../core/rime/SchemeCatalog";
 import {
   readWanxiangUpdaterMetadata,
@@ -100,6 +100,16 @@ async function downloadAsset(
     await removeIfExists(destination);
     throw new Error(`下载大小不匹配：远端 ${asset.size} bytes，本地 ${actual} bytes`);
   }
+  if (asset.digest) {
+    try {
+      if (!/^[a-f0-9]{64}$/i.test(asset.digest)) throw new Error("远端 SHA256 摘要无效");
+      const actualDigest = Crypto.sha256(await fm.readAsData(destination)).toHexString().toLowerCase();
+      if (actualDigest !== asset.digest.toLowerCase()) throw new Error("下载文件 SHA256 校验失败");
+    } catch (error) {
+      await removeIfExists(destination);
+      throw error;
+    }
+  }
   onProgress?.(1);
   return destination;
 }
@@ -150,76 +160,108 @@ function isProtected(relative: string): boolean {
     base === "user.yaml";
 }
 
-type ProtectedFile = { relative: string; bytes: Uint8Array };
+export type ManagedUpdate = { relative: string; source?: string };
 
-async function captureProtected(root: string): Promise<ProtectedFile[]> {
-  const fm = manager();
-  if (!(await exists(root))) return [];
-  const entries: string[] = await fm.readDirectory(root, true);
-  const result: ProtectedFile[] = [];
-  for (const entry of entries) {
-    const relative = relativePath(root, entry);
-    if (!relative || !isProtected(relative)) continue;
-    const absolute = String(Path.join(root, relative));
-    try {
-      if (await fm.isFile(absolute)) {
-        result.push({ relative, bytes: await fm.readAsBytes(absolute) });
-      }
-    } catch {}
+function safeManagedRelative(value: string): string {
+  const relative = String(value).replace(/\\/g, "/");
+  if (!relative || relative.startsWith("/") || /^[a-zA-Z]:/.test(relative) ||
+      relative.split("/").some((part) => !part || part === "." || part === "..") ||
+      relative.split("/").some((part) => part.startsWith(".wanxiang-update-backup"))) {
+    throw new Error("不安全的万象更新路径：" + value);
   }
-  return result;
+  if (isProtected(relative)) throw new Error("禁止覆盖自定义配置：" + relative);
+  return relative;
 }
 
-async function restoreProtected(root: string, files: readonly ProtectedFile[]): Promise<void> {
+/** Preserve originals until every copy succeeds. A power loss still requires
+ * manual recovery; failed rollback preserves the backup directory. */
+export async function applyManagedUpdates(root: string, operations: readonly ManagedUpdate[]): Promise<void> {
+  if (operations.length === 0) return;
   const fm = manager();
-  for (const item of files) {
-    const destination = String(Path.join(root, item.relative));
-    await ensureDirectory(String(Path.dirname(destination)));
-    await fm.writeAsBytes(destination, item.bytes);
+  const seen = new Set<string>();
+  const validated = operations.map((operation) => {
+    const relative = safeManagedRelative(operation.relative);
+    if (seen.has(relative)) throw new Error("重复更新路径：" + relative);
+    seen.add(relative);
+    if (operation.source != null && !operation.source) throw new Error("更新源文件为空");
+    return { relative, source: operation.source };
+  });
+  const backup = String(Path.join(
+    root, ".wanxiang-update-backup-" + Date.now() + "-" + Math.random().toString(36).slice(2)
+  ));
+  await ensureDirectory(backup);
+  const moved: string[] = [];
+  const written: string[] = [];
+  let success = false;
+
+  try {
+    for (const item of validated) {
+      const destination = String(Path.join(root, item.relative));
+      if (!(await exists(destination))) continue;
+      if (!(await fm.isFile(destination))) throw new Error("目标不是普通文件：" + item.relative);
+      const parked = String(Path.join(backup, item.relative));
+      await ensureDirectory(String(Path.dirname(parked)));
+      await fm.rename(destination, parked);
+      moved.push(item.relative);
+    }
+    for (const item of validated) {
+      if (item.source == null) continue;
+      const destination = String(Path.join(root, item.relative));
+      await ensureDirectory(String(Path.dirname(destination)));
+      written.push(item.relative);
+      await fm.copyFile(item.source, destination);
+    }
+    success = true;
+  } catch (error) {
+    let rollbackFailed = false;
+    for (const relative of written.reverse()) {
+      const destination = String(Path.join(root, relative));
+      try { if (await exists(destination)) await fm.remove(destination); }
+      catch { rollbackFailed = true; }
+    }
+    for (const relative of moved.reverse()) {
+      const destination = String(Path.join(root, relative));
+      const parked = String(Path.join(backup, relative));
+      try {
+        if (await exists(destination)) await fm.remove(destination);
+        await ensureDirectory(String(Path.dirname(destination)));
+        await fm.rename(parked, destination);
+      } catch { rollbackFailed = true; }
+    }
+    if (!rollbackFailed) await removeIfExists(backup);
+    if (rollbackFailed) {
+      throw new Error("更新回滚不完整；原文件备份：" + backup + "；错误：" + String(error));
+    }
+    throw error;
+  } finally {
+    if (success) await removeIfExists(backup);
   }
 }
 
-async function removeManagedSchemeFiles(root: string): Promise<number> {
-  const fm = manager();
-  let removed = 0;
-  for (const relative of readManagedSchemeFiles()) {
-    if (!relative || isProtected(relative)) continue;
-    const destination = String(Path.join(root, relative));
-    try {
-      if (!(await exists(destination)) || !(await fm.isFile(destination))) continue;
-      await fm.remove(destination);
-      removed += 1;
-    } catch {}
-  }
-  return removed;
-}
-
-async function mergeWanxiangSchemeDirectory(
-  sourceRoot: string,
-  destinationRoot: string
-): Promise<string[]> {
+async function schemeOperations(sourceRoot: string): Promise<{
+  operations: ManagedUpdate[]; copied: string[]; removed: number;
+}> {
   const fm = manager();
   const entries: string[] = await fm.readDirectory(sourceRoot, true);
+  const replacements: ManagedUpdate[] = [];
   const copied: string[] = [];
-
   for (const entry of entries) {
     const relative = relativePath(sourceRoot, entry);
     if (!relative || isProtected(relative)) continue;
-
     const source = String(Path.join(sourceRoot, relative));
     if (!(await fm.isFile(source))) continue;
-
-    const destination = String(Path.join(destinationRoot, relative));
-    await ensureDirectory(String(Path.dirname(destination)));
-
-    if (await exists(destination)) {
-      await fm.remove(destination);
-    }
-    await fm.copyFile(source, destination);
+    safeManagedRelative(relative);
+    replacements.push({ relative, source });
     copied.push(relative);
   }
-
-  return copied;
+  const nextFiles = new Set(copied);
+  const removals: ManagedUpdate[] = [];
+  for (const file of readManagedSchemeFiles()) {
+    if (isProtected(file)) continue;
+    safeManagedRelative(file);
+    if (!nextFiles.has(file)) removals.push({ relative: file });
+  }
+  return { operations: [...removals, ...replacements], copied, removed: removals.length };
 }
 
 async function installScheme(
@@ -232,31 +274,23 @@ async function installScheme(
   const fm = manager();
   await ensureDirectory(root);
 
-  onStage?.("保护自定义配置…");
-  const protectedFiles = await captureProtected(root);
   onStage?.("下载万象 Lite 方案…");
   const archive = await downloadAsset(asset, onProgress);
-  const extracted = String(Path.join(fm.temporaryDirectory, `wanxiang-scheme-${Date.now()}`));
-  await removeIfExists(extracted);
-  await ensureDirectory(extracted);
-
+  const extracted = String(Path.join(fm.temporaryDirectory, "wanxiang-scheme-" + Date.now()));
   try {
+    await removeIfExists(extracted);
+    await ensureDirectory(extracted);
     onStage?.("解压方案…");
     await fm.unzip(archive, extracted);
 
-    const removed = await removeManagedSchemeFiles(root);
-    if (removed > 0) onStage?.(`已清理旧方案文件：${removed} 个`);
-
-    onStage?.("合并并覆盖方案文件…");
-    const copied = await mergeWanxiangSchemeDirectory(extracted, root);
-    writeManagedSchemeFiles(copied);
+    const update = await schemeOperations(extracted);
+    onStage?.("事务更新方案文件…");
+    await applyManagedUpdates(root, update.operations);
+    writeManagedSchemeFiles(update.copied);
+    if (update.removed) onStage?.("已清理旧方案文件：" + update.removed + " 个");
   } finally {
-    try {
-      await restoreProtected(root, protectedFiles);
-    } finally {
-      await removeIfExists(archive);
-      await removeIfExists(extracted);
-    }
+    await removeIfExists(archive);
+    await removeIfExists(extracted);
   }
 }
 
@@ -283,11 +317,10 @@ async function installDictionary(
 
   onStage?.("下载 Lite 词库…");
   const archive = await downloadAsset(asset, onProgress);
-  const extracted = String(Path.join(fm.temporaryDirectory, `wanxiang-dicts-${Date.now()}`));
-  await removeIfExists(extracted);
-  await ensureDirectory(extracted);
-
+  const extracted = String(Path.join(fm.temporaryDirectory, "wanxiang-dicts-" + Date.now()));
   try {
+    await removeIfExists(extracted);
+    await ensureDirectory(extracted);
     onStage?.("解压词库…");
     await fm.unzip(archive, extracted);
     const entries: string[] = await fm.readDirectory(extracted, true);
@@ -308,15 +341,12 @@ async function installDictionary(
       }
     }
 
-    onStage?.("写入词库…");
-    for (const item of files) {
-      const relative = dictRelative(item.relative, commonPrefix);
-      if (!relative || relative === ".DS_Store") continue;
-      const destination = String(Path.join(dictRoot, relative));
-      await ensureDirectory(String(Path.dirname(destination)));
-      if (await exists(destination)) await fm.remove(destination);
-      await fm.copyFile(item.absolute, destination);
-    }
+    const operations: ManagedUpdate[] = files.map((item) => ({
+      relative: dictRelative(item.relative, commonPrefix),
+      source: item.absolute
+    })).filter((item) => item.relative.length > 0 && item.relative !== ".DS_Store");
+    onStage?.("事务更新词库…");
+    await applyManagedUpdates(dictRoot, operations);
   } finally {
     await removeIfExists(archive);
     await removeIfExists(extracted);
@@ -334,11 +364,9 @@ async function installModel(
 
   onStage?.("下载语法模型…");
   const source = await downloadAsset(asset, onProgress);
-  const destination = String(Path.join(root, asset.name));
   try {
-    onStage?.("写入语法模型…");
-    if (await exists(destination)) await manager().remove(destination);
-    await manager().copyFile(source, destination);
+    onStage?.("事务更新语法模型…");
+    await applyManagedUpdates(root, [{ relative: asset.name, source }]);
   } finally {
     await removeIfExists(source);
   }

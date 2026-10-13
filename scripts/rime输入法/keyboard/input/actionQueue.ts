@@ -1,8 +1,9 @@
-type KeyboardAction = () => void;
+type KeyboardAction = () => void | Promise<void>;
 
 const queuedActions: KeyboardAction[] = [];
 let head = 0;
 let executing = false;
+let draining = false;
 let microtaskScheduled = false;
 let generation = 0;
 
@@ -15,44 +16,65 @@ function resetConsumed() {
   head = 0;
 }
 
-function execute(action: KeyboardAction) {
-  executing = true;
-  try {
-    action();
-  } catch (error) {
-    console.error("Keyboard action failed", error);
-  } finally {
-    executing = false;
-  }
-}
-
-function drainQueuedActions() {
-  microtaskScheduled = false;
-  while (head < queuedActions.length) {
-    const action = queuedActions[head++];
-    execute(action);
-  }
-  resetConsumed();
-}
-
 function scheduleDrain() {
-  if (microtaskScheduled || executing || pendingCount() === 0) return;
+  if (microtaskScheduled || executing || draining || pendingCount() === 0) return;
   const scheduledGeneration = generation;
   microtaskScheduled = true;
   void Promise.resolve().then(() => {
     if (scheduledGeneration !== generation) return;
+    microtaskScheduled = false;
     drainQueuedActions();
   });
 }
 
+function execute(action: KeyboardAction) {
+  const startedGeneration = generation;
+  executing = true;
+  let result: void | Promise<void>;
+  try {
+    result = action();
+  } catch (error) {
+    console.error("Keyboard action failed", error);
+    executing = false;
+    return;
+  }
+  if (result && typeof (result as Promise<void>).then === "function") {
+    void Promise.resolve(result).then(
+      () => complete(),
+      (error) => { console.error("Keyboard action failed", error); complete(); }
+    );
+    return;
+  }
+  executing = false;
+
+  function complete() {
+    if (generation !== startedGeneration) return;
+    executing = false;
+    scheduleDrain();
+  }
+}
+
+function drainQueuedActions() {
+  if (executing || draining) return;
+  draining = true;
+  try {
+    while (!executing && pendingCount() > 0) {
+      const action = queuedActions[head++];
+      execute(action);
+    }
+    if (pendingCount() === 0) resetConsumed();
+  } finally {
+    draining = false;
+  }
+}
+
 /**
- * Preserve the frozen keyboard's important delivery contract without bringing
- * back the frozen gesture infrastructure: normal taps execute immediately;
- * only re-entrant actions are serialized FIFO instead of entering the input
- * transaction while it is already running.
+ * Normal key taps execute synchronously when idle. Reentrant taps and
+ * asynchronous host actions are serialized FIFO. Clearing on unmount also
+ * invalidates callbacks from the previous queue generation.
  */
 export function dispatchKeyboardAction(action: KeyboardAction) {
-  if (!executing && !microtaskScheduled && pendingCount() === 0) {
+  if (!executing && !draining && !microtaskScheduled && pendingCount() === 0) {
     execute(action);
     scheduleDrain();
     return;
@@ -65,5 +87,6 @@ export function clearKeyboardActionQueue() {
   generation += 1;
   microtaskScheduled = false;
   executing = false;
+  draining = false;
   resetConsumed();
 }

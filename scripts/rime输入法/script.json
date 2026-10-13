@@ -10,7 +10,7 @@
   "description": "Aligns Wanxiang Lite/T9 updates with the proven Wanxiang assistant flow: tracked old-file cleanup, overwrite-safe install, and Scripting deploy with fullCheck=false.",
   "remoteResource": null,
   "color": "rgba(0, 0, 0, 1)",
-  "version": "0.3.43",
+  "version": "0.3.44",
   "localizedDescriptions": {
     "en": "A clean-architecture custom keyboard powered by Rime.",
     "zh": "全新架构的 Rime 自定义键盘。"

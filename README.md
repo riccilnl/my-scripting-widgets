@@ -31,6 +31,21 @@ Scripting App 小组件集合
 - 自动刷新间隔设置
 - 实时行情与涨跌显示
 
+## Rime 输入法：戴尔 → GitHub → iPhone
+
+- 唯一开发目录：戴尔 ~/Work/scripting/scripts/rime输入法；Git 根目录：~/Work/scripting。
+- 在戴尔完成测试后，仅暂存 Rime 项目范围的文件并提交 main。
+- GitHub Actions Build Scripting Rime 在 Rime 源码及打包工具变化后测试、生成根目录 rime输入法.scripting 并提交安装包。
+- 手机使用下方快速安装中的 rime输入法.scripting 链接在 Scripting 中更新，不依赖戴尔到手机的文件同步。
+- 安装包排除 tests/、docs/、.cora/ 等开发目录。
+- 注意：源码提交不等于安装包发布，必须等 Actions 的发布提交成功后再在手机安装。
+
+单独打包：node scripts/update_links.js --project rime输入法
+
+本地验收：
+    node --test scripts/update_links.test.js
+    node --test scripts/rime输入法/tests/runtime.test.cjs
+
 ## 发布脚本说明
 
 项目根目录提供了自动打包脚本 `scripts/update_links.js`。

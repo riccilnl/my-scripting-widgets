@@ -1,7 +1,7 @@
 import type { EditCommand, HostCommand, KeyboardCommand } from "../../contracts/action";
 
 export type HostCommandPort = {
-  edit: (command: EditCommand) => void;
+  edit: (command: EditCommand) => void | Promise<void>;
   nextKeyboard: () => void;
   dismissToHome: () => void;
 };
@@ -27,8 +27,7 @@ export function isHostCommand(command: KeyboardCommand): command is HostCommand 
 
 export function executeHostCommand(command: HostCommand, port: HostCommandPort) {
   if (isEditCommand(command)) {
-    port.edit(command);
-    return;
+    return port.edit(command);
   }
   switch (command.type) {
     case "nextKeyboard":

@@ -78,6 +78,10 @@ function createPackage(repoRoot, project, sequence) {
     '*/.DS_Store',
     '*/.idea/*',
     '*/.vscode/*',
+    '*/docs/*',
+    '*/tests/*',
+    '*/.cora/*',
+    '*/.colameta/*',
   ];
   const args = ['-rq', temporaryPath, project.name];
   for (const pattern of exclusions) {
@@ -132,9 +136,14 @@ function updateReadme(readme, files) {
   fs.writeFileSync(readme.readmePath, `${before}\n\n${installLinks}\n${after}`);
 }
 
-function run(repoRoot = process.cwd()) {
+function run(repoRoot = process.cwd(), projectName = null) {
   const readme = validateReadme(repoRoot);
-  const projects = getSourceProjects(repoRoot).map((name) => validateProject(repoRoot, name));
+  const availableNames = getSourceProjects(repoRoot);
+  if (projectName != null && !availableNames.includes(projectName)) {
+    throw new Error("未知源码项目：" + projectName);
+  }
+  const projects = (projectName == null ? availableNames : [projectName])
+    .map((name) => validateProject(repoRoot, name));
   const pendingPackages = [];
 
   try {
@@ -159,7 +168,11 @@ function run(repoRoot = process.cwd()) {
 
 if (require.main === module) {
   try {
-    run();
+    const args = process.argv.slice(2);
+    if (args.length !== 0 && (args.length !== 2 || args[0] !== '--project' || !args[1])) {
+      throw new Error('用法：node scripts/update_links.js [--project 项目名]');
+    }
+    run(process.cwd(), args.length ? args[1] : null);
   } catch (error) {
     console.error(`❌ 更新失败: ${error.message}`);
     process.exitCode = 1;

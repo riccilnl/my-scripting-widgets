@@ -145,6 +145,7 @@ export class RimeEngine {
     }
 
     const originalPage = Math.max(0, initial.pageNo ?? 0);
+    const originalHighlight = Math.max(0, initial.highlightedIndex ?? 0);
     const items: IndexedRimeCandidate[] = [];
     let hasMore = false;
     let guard = 0;
@@ -185,6 +186,14 @@ export class RimeEngine {
         if (!this.session.processKey(KEY_PAGE_DOWN)) break;
         menu = this.session.context?.menu;
         restoreGuard += 1;
+      }
+      let highlightGuard = 0;
+      while (menu && (menu.pageNo ?? 0) === originalPage &&
+             (menu.highlightedIndex ?? 0) !== originalHighlight && highlightGuard < 32) {
+        const key = (menu.highlightedIndex ?? 0) < originalHighlight ? KEY_DOWN : KEY_UP;
+        if (!this.session.processKey(key)) break;
+        menu = this.session.context?.menu;
+        highlightGuard += 1;
       }
     }
 

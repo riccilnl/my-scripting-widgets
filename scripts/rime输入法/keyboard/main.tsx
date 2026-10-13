@@ -134,7 +134,9 @@ function KeyboardRoot(props: {
   const [t9PinyinOptions, setT9PinyinOptions] = useState<string[]>([]);
   const [asciiMode, setAsciiMode] = useState(false);
   const [shifted, setShifted] = useState(false);
+  const shiftedRef = useRef(false);
   const [capsLocked, setCapsLocked] = useState(false);
+  const capsLockedRef = useRef(false);
   const lastShiftTapRef = useRef(0);
   const [surfaceLayer, setSurfaceLayer] = useState<SurfaceLayerId>("main");
   const effectiveLayout = asciiMode ? "qwerty" : chineseLayoutRef.current;
@@ -176,6 +178,8 @@ function KeyboardRoot(props: {
       try { engineRef.current?.close(); } catch {}
       engineRef.current = null;
       try { CustomKeyboard.unmarkText(); } catch {}
+      markedTextActiveRef.current = false;
+      editController.dispose();
       clearKeyboardActionQueue();
       disposeKeyboardHaptics();
     };
@@ -261,7 +265,7 @@ function KeyboardRoot(props: {
       return;
     }
     if (isHostCommand(command)) {
-      executeHostCommand(command, {
+      return executeHostCommand(command, {
         edit: (editCommand) => editController.execute(editCommand, EDIT_EFFECTS),
         nextKeyboard: () => { try { CustomKeyboard.nextKeyboard(); } catch {} },
         dismissToHome: () => { try { CustomKeyboard.dismissToHome(); } catch {} }
@@ -274,11 +278,16 @@ function KeyboardRoot(props: {
     const controller = controllerRef.current;
     if (!controller) return;
     const effect = controller.dispatch(command, {
-      shifted,
-      capsLocked,
+      shifted: shiftedRef.current,
+      capsLocked: capsLockedRef.current,
       lastShiftTapAt: lastShiftTapRef.current
     });
-    if (effect.insertText) {
+    if (effect.steps) {
+      for (const step of effect.steps) {
+        if (step.insertText) editController.insertTextReplacingSelectAll(step.insertText);
+        publish(step.snapshot);
+      }
+    } else if (effect.insertText) {
       editController.insertTextReplacingSelectAll(effect.insertText);
     }
     if (effect.deleteBackward) {
@@ -288,11 +297,17 @@ function KeyboardRoot(props: {
         CustomKeyboard.deleteBackward();
       }
     }
-    if (effect.shifted !== shifted) setShifted(effect.shifted);
-    if (effect.capsLocked !== capsLocked) setCapsLocked(effect.capsLocked);
+    if (effect.shifted !== shiftedRef.current) {
+      shiftedRef.current = effect.shifted;
+      setShifted(effect.shifted);
+    }
+    if (effect.capsLocked !== capsLockedRef.current) {
+      capsLockedRef.current = effect.capsLocked;
+      setCapsLocked(effect.capsLocked);
+    }
     if (effect.lastShiftTapAt !== lastShiftTapRef.current) lastShiftTapRef.current = effect.lastShiftTapAt;
     if (command.type === "toggleAscii") setSurfaceLayer("main");
-    publish(effect.snapshot);
+    if (!effect.steps) publish(effect.snapshot);
   }
 
   function moveSpaceDrag(steps: number) {
@@ -346,11 +361,13 @@ function KeyboardRoot(props: {
   }
 
   function selectCandidate(index: number) {
-    const engine = engineRef.current;
-    if (!engine) return;
-    playKeyboardHaptic(hapticsEnabled);
-    resetExpandedCandidates();
-    publish(engine.selectCandidate(index));
+    dispatchKeyboardAction(() => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      playKeyboardHaptic(hapticsEnabled);
+      resetExpandedCandidates();
+      publish(engine.selectCandidate(index));
+    });
   }
 
   function selectT9Pinyin(option: string) {
@@ -429,7 +446,7 @@ function KeyboardRoot(props: {
             stepSize: compositionActive && candidates.length > 0
               ? SPACE_CANDIDATE_DRAG_STEP
               : SPACE_CURSOR_DRAG_STEP,
-            onSteps: moveSpaceDrag
+            onSteps: (steps: number) => dispatchKeyboardAction(() => moveSpaceDrag(steps))
           }
           : undefined}
         repeatBackspace={definition.actions.tap.type === "backspace"}

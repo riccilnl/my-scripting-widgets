@@ -123,18 +123,20 @@ function rimePaths(): RimePaths {
   };
 }
 
-async function exists(fm: any, path: string): Promise<boolean> {
+async function exists(fm: any, path: string): Promise<boolean | null> {
   try {
     if (typeof fm.existsSync === "function") return Boolean(fm.existsSync(path));
     if (typeof fm.fileExists === "function") return Boolean(fm.fileExists(path));
     if (typeof fm.exists === "function") return Boolean(await fm.exists(path));
-  } catch {}
-  return false;
+  } catch { return null; }
+  return null;
 }
 
 async function mkdir(fm: any, path: string): Promise<boolean> {
   try {
-    if (await exists(fm, path)) return true;
+    const present = await exists(fm, path);
+    if (present === null) return false;
+    if (present) return true;
     if (typeof fm.createDirectorySync === "function") {
       fm.createDirectorySync(path);
       return true;
@@ -144,16 +146,18 @@ async function mkdir(fm: any, path: string): Promise<boolean> {
       return true;
     }
   } catch {}
-  return await exists(fm, path);
+  return (await exists(fm, path)) === true;
 }
 
-async function readText(fm: any, path: string): Promise<string> {
+async function readText(fm: any, path: string): Promise<string | null> {
   try {
-    if (!(await exists(fm, path))) return "";
+    const present = await exists(fm, path);
+    if (present === null) return null;
+    if (!present) return "";
     if (typeof fm.readAsStringSync === "function") return String(fm.readAsStringSync(path, "utf-8") ?? "");
     if (typeof fm.readAsString === "function") return String(await fm.readAsString(path, "utf-8") ?? "");
   } catch {}
-  return "";
+  return null;
 }
 
 async function writeText(fm: any, path: string, value: string): Promise<boolean> {
@@ -256,12 +260,15 @@ export async function prepareT9BridgeRuntime(): Promise<T9BridgeRuntimeResult> {
   }
 
   let luaChanged = false;
-  if (await readText(fm, luaPath) !== T9_BRIDGE_LUA) {
+  const oldLua = await readText(fm, luaPath);
+  if (oldLua === null) throw new Error("无法读取当前九键 Lua 配置，已取消覆盖");
+  if (oldLua !== T9_BRIDGE_LUA) {
     if (!(await writeText(fm, luaPath, T9_BRIDGE_LUA))) return { ready: false, changed: false };
     luaChanged = true;
   }
 
   const before = await readText(fm, customPath);
+  if (before === null) throw new Error("无法读取当前九键自定义配置，已取消覆盖");
   const registration = ensureRegistration(before);
   if (registration.changed && !(await writeText(fm, customPath, registration.text))) {
     return { ready: false, changed: false };

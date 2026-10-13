@@ -15,6 +15,7 @@ type InputEffect = {
   lastShiftTapAt: number;
   insertText?: string;
   deleteBackward?: boolean;
+  steps?: Array<{ snapshot: RimeSnapshot; insertText?: string }>;
 };
 
 type InputEnginePort = {
@@ -138,19 +139,17 @@ export class InputController {
           };
         }
 
-        let snapshot: RimeSnapshot | null = null;
-        let fallback = "";
+        const steps: Array<{ snapshot: RimeSnapshot; insertText?: string }> = [];
         for (const ch of command.text) {
-          const result = this.engine.processKey(ch.charCodeAt(0));
-          snapshot = result;
-          if (!result.consumed) fallback += ch;
+          const result = this.engine.processKey(ch.codePointAt(0)!);
+          steps.push({ snapshot: result, insertText: result.consumed ? undefined : ch });
         }
         return {
-          snapshot: snapshot ?? this.engine.peek(),
+          snapshot: steps.length ? steps[steps.length - 1].snapshot : this.engine.peek(),
           shifted: state.shifted,
           capsLocked: state.capsLocked,
           lastShiftTapAt: state.lastShiftTapAt,
-          insertText: fallback || undefined
+          steps
         };
       }
 
