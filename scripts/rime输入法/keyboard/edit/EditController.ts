@@ -1,11 +1,21 @@
 import type { EditCommand } from "../../contracts/action";
 
+/** Keep one segmenter per keyboard JS runtime; avoid rebuilding it for every
+ * selection/delete and avoid allocating an array of grapheme segments. */
+let cachedSegmenterType: any = null;
+let cachedSegmenter: any = null;
+
 /** iOS deleteBackward removes one user-perceived character at a time. */
 export function backspaceUnitCount(value: string): number {
-  const segmenter = (Intl as any).Segmenter;
-  return typeof segmenter === "function"
-    ? Array.from(new segmenter(undefined, { granularity: "grapheme" }).segment(value)).length
-    : Array.from(value).length;
+  const Segmenter = (Intl as any).Segmenter;
+  if (typeof Segmenter !== "function") return Array.from(value).length;
+  if (cachedSegmenterType !== Segmenter || !cachedSegmenter) {
+    cachedSegmenterType = Segmenter;
+    cachedSegmenter = new Segmenter(undefined, { granularity: "grapheme" });
+  }
+  let count = 0;
+  for (const _ of cachedSegmenter.segment(value)) count += 1;
+  return count;
 }
 
 export type EditEffectPort = {
@@ -30,6 +40,9 @@ export class KeyboardEditController {
   dispose() {
     this.disposed = true;
     this.clearSelectionState();
+    // The undo buffer can contain an entire document; do not retain it
+    // across an asynchronously finishing keyboard teardown.
+    this.deletedText = "";
   }
 
 

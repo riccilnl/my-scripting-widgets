@@ -1,5 +1,6 @@
 import { Path } from "scripting";
 import { T9_BRIDGE_LUA } from "./T9BridgeAsset";
+import type { StartupTrace } from "../../keyboard/runtime/StartupTrace";
 
 const TARGET_SCHEMA_ID = "wanxiang_t9";
 const BRIDGE_FILENAME = "t9_bridge.lua";
@@ -230,7 +231,7 @@ function ensureRegistration(customText: string): { changed: boolean; text: strin
   };
 }
 
-export async function prepareT9BridgeRuntime(): Promise<T9BridgeRuntimeResult> {
+export async function prepareT9BridgeRuntime(trace?: StartupTrace | null): Promise<T9BridgeRuntimeResult> {
   const fm = (globalThis as any).FileManager;
   const rime = (globalThis as any).Rime;
   if (!fm || !rime) return { ready: false, changed: false };
@@ -245,20 +246,25 @@ export async function prepareT9BridgeRuntime(): Promise<T9BridgeRuntimeResult> {
   // Fast path: after one verified installation, compare only file metadata.
   // Full file contents are read again whenever either file changes.
   const marker = readRuntimeMarker();
+  trace?.mark(marker ? "t9.marker.present" : "t9.marker.missing");
   if (marker) {
+    trace?.mark("t9.stat.begin");
     const [luaStamp, customStamp] = await Promise.all([
       fileStamp(fm, luaPath),
       fileStamp(fm, customPath)
     ]);
     if (sameStamp(luaStamp, marker.lua) && sameStamp(customStamp, marker.custom)) {
+      trace?.mark("t9.fastpath");
       return { ready: true, changed: false };
     }
+    trace?.mark("t9.stat.stale");
   }
 
   if (!(await mkdir(fm, paths.userDataDir)) || !(await mkdir(fm, luaDir)) || !(await mkdir(fm, paths.sharedDataDir))) {
     return { ready: false, changed: false };
   }
 
+  trace?.mark("t9.repair.begin");
   let luaChanged = false;
   const oldLua = await readText(fm, luaPath);
   if (oldLua === null) throw new Error("无法读取当前九键 Lua 配置，已取消覆盖");
@@ -277,7 +283,9 @@ export async function prepareT9BridgeRuntime(): Promise<T9BridgeRuntimeResult> {
   const changed = luaChanged || registration.changed;
   if (changed) {
     if (typeof rime.deploy !== "function") throw new Error("当前 Scripting Rime API 不支持 deploy，无法启用九键输入桥");
+    trace?.mark("t9.deploy.begin");
     await rime.deploy();
+    trace?.mark("t9.deploy.end");
   }
 
   const [luaStamp, customStamp] = await Promise.all([
@@ -292,5 +300,6 @@ export async function prepareT9BridgeRuntime(): Promise<T9BridgeRuntimeResult> {
     });
   }
 
+  trace?.mark(changed ? "t9.repair.changed" : "t9.repair.unchanged");
   return { ready: true, changed };
 }

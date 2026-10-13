@@ -219,3 +219,28 @@ export function resolveKeyboardMetrics(
     bodyHeight: keyHeight * 4 + rowSpacing * 3
   };
 }
+
+/**
+ * Cache only the latest geometry calculation inside one keyboard lifetime.
+ * Layout and skin geometry are immutable in current settings projection,
+ * but identity checks ensure a future settings refresh cannot reuse stale sizes.
+ * Rotation/width changes recalculate; no global cache survives unmount.
+ */
+export function createKeyboardMetricsResolver() {
+  let previous: {
+    width: number;
+    layout: ResolvedKeyboardLayout;
+    geometry: SkinGeometry;
+    metrics: KeyboardMetrics;
+  } | null = null;
+
+  return (width: number, layout: ResolvedKeyboardLayout, geometry: SkinGeometry): KeyboardMetrics => {
+    if (previous && previous.width === width &&
+        previous.layout === layout && previous.geometry === geometry) {
+      return previous.metrics;
+    }
+    const metrics = resolveKeyboardMetrics(width, layout, geometry);
+    previous = { width, layout, geometry, metrics };
+    return metrics;
+  };
+}

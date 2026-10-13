@@ -135,7 +135,12 @@ export class RimeEngine {
     return { snapshot: this.peek(), movedSteps };
   }
 
-  collectCandidateBatch(limit = 96): {
+  /**
+   * Enumerate the same Rime pages as the full query, but materialize only
+   * indices at or after skip. The caller retains earlier immutable items.
+   * This does NOT skip native paging: the public Session API has no seek.
+   */
+  collectCandidateBatch(limit = 96, skip = 0): {
     items: IndexedRimeCandidate[];
     hasMore: boolean;
   } {
@@ -149,23 +154,28 @@ export class RimeEngine {
     const items: IndexedRimeCandidate[] = [];
     let hasMore = false;
     let guard = 0;
+    let scanned = 0;
+    const skipCount = Math.max(0, Math.floor(skip));
 
     try {
-      while (items.length < limit && guard < 256) {
+      while (scanned < limit && guard < 256) {
         const menu = this.session.context?.menu;
         if (!menu) break;
         const pageSize = Math.max(1, menu.pageSize ?? 1);
         const pageCandidates = menu.candidates ?? [];
         const base = Math.max(0, menu.pageNo ?? 0) * pageSize;
         let consumedFromPage = 0;
-        for (let index = 0; index < pageCandidates.length && items.length < limit; index += 1) {
-          items.push({
-            candidate: pageCandidates[index],
-            originalIndex: base + index
-          });
+        for (let index = 0; index < pageCandidates.length && scanned < limit; index += 1) {
+          if (scanned >= skipCount) {
+            items.push({
+              candidate: pageCandidates[index],
+              originalIndex: base + index
+            });
+          }
+          scanned += 1;
           consumedFromPage += 1;
         }
-        if (items.length >= limit) {
+        if (scanned >= limit) {
           hasMore = consumedFromPage < pageCandidates.length || !menu.isLastPage;
           break;
         }

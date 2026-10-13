@@ -23,7 +23,7 @@ import { resolveSkin } from "../skin/registry";
 import { resolveEffectiveColorScheme } from "../skin/appearance";
 import {
   resolveKeyboardLayout,
-  resolveKeyboardMetrics,
+  createKeyboardMetricsResolver,
   type KeyboardMetrics,
   type ResolvedKeyboardLayout
 } from "../layout/metrics";
@@ -40,6 +40,7 @@ import { displayedPreeditCursor } from "./preedit/displayedPreeditCursor";
 import { t9DisplayedPreedit } from "./preedit/t9DisplayedPreedit";
 import { disposeKeyboardHaptics, playKeyboardHaptic } from "./feedback/haptics";
 import { prepareKeyboardRimeRuntime } from "./runtime/RimeRuntimeCoordinator";
+import { createStartupTrace, type StartupTrace } from "./runtime/StartupTrace";
 import { clearKeyboardActionQueue, dispatchKeyboardAction } from "./input/actionQueue";
 import { applyRimeHostText } from "./input/RimeHostTextBridge";
 import { executeHostCommand, isHostCommand } from "./toolbar/hostCommand";
@@ -94,11 +95,19 @@ function KeyboardRoot(props: {
   initialSettings: KeyboardRuntimeSettings;
   layout: ResolvedKeyboardLayout;
   skin: KeyboardSkin;
+  startupTrace: StartupTrace | null;
 }) {
+  const startupRenderMarked = useRef<"new" | "started" | "done">("new");
+  if (startupRenderMarked.current === "new") {
+    startupRenderMarked.current = "started";
+    props.startupTrace?.mark("ui.root.render.begin");
+  }
   const skin = props.skin;
   const colorScheme = useColorScheme();
   const effectiveScheme = resolveEffectiveColorScheme(colorScheme === "dark" ? "dark" : "light");
   const colors = effectiveScheme === "dark" ? skin.dark : skin.light;
+  const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> | null>(null);
+  if (!metricsResolverRef.current) metricsResolverRef.current = createKeyboardMetricsResolver();
   const engineRef = useRef<RimeEngine | null>(null);
   const controllerRef = useRef<InputController | null>(null);
   const editControllerRef = useRef<KeyboardEditController | null>(null);
@@ -128,6 +137,8 @@ function KeyboardRoot(props: {
   }
   const keyCatalog = keyCatalogRef.current;
   const [ready, setReady] = useState(false);
+  // Diagnostic-only timestamp for the first Rime-bound tap before setup ends.
+  const firstInputBeforeReadyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CandidateEntry[]>([]);
   const [highlightedCandidateIndex, setHighlightedCandidateIndex] = useState(0);
@@ -150,13 +161,24 @@ function KeyboardRoot(props: {
   const expandedLoadLimitRef = useRef(EXPANDED_CANDIDATE_BATCH);
   const expandedLoadTriggerCountRef = useRef(-1);
 
+  if (startupRenderMarked.current === "started") {
+    props.startupTrace?.mark("ui.root.hooksReady");
+    startupRenderMarked.current = "done";
+  }
   useEffect(() => {
     let disposed = false;
+    const startupTrace = props.startupTrace;
+    startupTrace?.mark("ui.effect.begin");
     clearKeyboardActionQueue();
     const chineseLayout = chineseLayoutRef.current;
     const preferredSchemaId = initialSettings.schemes[chineseLayout];
 
-    void prepareKeyboardRimeRuntime({ chineseLayout, preferredSchemaId })
+    void prepareKeyboardRimeRuntime({
+      chineseLayout,
+      preferredSchemaId,
+      isCancelled: () => disposed,
+      startupTrace
+    })
       .then((engine) => {
         if (disposed) {
           engine.close();
@@ -166,14 +188,21 @@ function KeyboardRoot(props: {
         controllerRef.current = new InputController(engine);
         setAsciiMode(engine.asciiMode);
         setReady(true);
+        startupTrace?.mark("ui.readyRequested");
         publish(engine.peek());
+        startupTrace?.mark("ui.firstPublished");
+        startupTrace?.finish("ready");
       })
       .catch((error) => {
-        if (!disposed) setError((error as Error)?.message ?? String(error));
+        if (!disposed) {
+          setError((error as Error)?.message ?? String(error));
+          startupTrace?.finish("error");
+        }
       });
 
     return () => {
       disposed = true;
+      startupTrace?.finish("cancelled");
       controllerRef.current = null;
       try { engineRef.current?.close(); } catch {}
       engineRef.current = null;
@@ -213,17 +242,18 @@ function KeyboardRoot(props: {
     setHighlightedCandidateIndex(Math.max(0, context?.menu?.highlightedIndex ?? 0));
 
     const engine = engineRef.current;
+    // F23 is essential after mutations, but the same mode/schema should not
+    // be re-read just to derive the visible preedit later in this publish.
+    const t9Active = Boolean(engine && !engine.asciiMode && engine.isT9BridgeTargetSchema());
     let t9Options: string[] = [];
-    if (engine && !engine.asciiMode && engine.isT9BridgeTargetSchema()) {
-      t9Options = engine.queryT9PinyinOptions();
-    }
+    if (t9Active && engine) t9Options = engine.queryT9PinyinOptions();
     setT9PinyinOptions((previous) => sameStringList(previous, t9Options) ? previous : t9Options);
 
     if (!nextPreedit) {
       resetExpandedCandidates();
     }
 
-    const visiblePreedit = engine && !engine.asciiMode && engine.isT9BridgeTargetSchema()
+    const visiblePreedit = t9Active
       ? t9DisplayedPreedit(nextPreedit, t9Options)
       : nextPreedit;
     markedTextActiveRef.current = applyRimeHostText({
@@ -276,7 +306,13 @@ function KeyboardRoot(props: {
       setRecentSymbols((history) => rememberRecentSymbol(history, command.text));
     }
     const controller = controllerRef.current;
-    if (!controller) return;
+    if (!controller) {
+      if (!firstInputBeforeReadyRef.current) {
+        firstInputBeforeReadyRef.current = true;
+        props.startupTrace?.mark("input.firstBeforeReady");
+      }
+      return;
+    }
     const effect = controller.dispatch(command, {
       shifted: shiftedRef.current,
       capsLocked: capsLockedRef.current,
@@ -307,7 +343,10 @@ function KeyboardRoot(props: {
     }
     if (effect.lastShiftTapAt !== lastShiftTapRef.current) lastShiftTapRef.current = effect.lastShiftTapAt;
     if (command.type === "toggleAscii") setSurfaceLayer("main");
-    if (!effect.steps) publish(effect.snapshot);
+    // Shift/Caps modifies only keyboard-side state: Rime, its candidates and
+    // host marked text have not changed. Avoid an extra T9 Lua probe and
+    // native marked-text write on every Shift tap.
+    if (!effect.steps && command.type !== "toggleShift") publish(effect.snapshot);
   }
 
   function moveSpaceDrag(steps: number) {
@@ -404,18 +443,24 @@ function KeyboardRoot(props: {
     expandedLoadTriggerCountRef.current = currentCount;
 
     const nextLimit = expandedLoadLimitRef.current + EXPANDED_CANDIDATE_BATCH;
-    const batch = engine.collectCandidateBatch(nextLimit);
+    // Native Rime pages still need traversing, but avoid rebuilding all
+    // previously rendered candidate wrappers on every incremental load.
+    const batch = engine.collectCandidateBatch(nextLimit, currentCount);
     expandedLoadLimitRef.current = nextLimit;
-    const madeProgress = batch.items.length > currentCount;
+    const madeProgress = batch.items.length > 0;
     setExpandedHasMore(batch.hasMore && madeProgress);
 
     if (!madeProgress) return;
-    const appended = batch.items.slice(currentCount);
-    setExpandedCandidates((previous) => [...previous, ...appended]);
+    setExpandedCandidates((previous) => [...previous, ...batch.items]);
   }
 
   function dismissKeyboard() {
-    try { CustomKeyboard.dismiss(); } catch {}
+    try {
+      CustomKeyboard.dismiss();
+      // iOS may keep the keyboard extension process alive after dismissing
+      // its view. Release Core Haptics without waiting for an unmount event.
+      disposeKeyboardHaptics();
+    } catch {}
   }
 
   function renderKey(
@@ -850,7 +895,7 @@ function KeyboardRoot(props: {
     <GeometryReader>
       {(proxy: any) => {
         const width = Math.max(240, Number(proxy.size?.width ?? 390));
-        const metrics = resolveKeyboardMetrics(width, props.layout, skin.geometry);
+        const metrics = metricsResolverRef.current!(width, props.layout, skin.geometry);
         const totalHeight = props.layout.requestedHeight;
         return (
           <ZStack
@@ -924,17 +969,31 @@ function KeyboardRoot(props: {
 }
 
 function main() {
-  const initialSettings = readKeyboardRuntimeSettings();
-  const skin = resolveSkin(initialSettings.skinId);
-  const layout = resolveKeyboardLayout(initialSettings.layoutPreferences, skin.layoutDefaults);
-  try { CustomKeyboard.setToolbarVisible(false); } catch {}
+  // Opt-in only: tracing begins when the JS entrypoint executes, not while
+  // Scripting loads/parses its statically imported modules.
+  const startupTrace = createStartupTrace();
   try {
-    const keyboard = CustomKeyboard as any;
-    if (typeof keyboard.setHasDictationKey === "function") keyboard.setHasDictationKey(false);
-    else keyboard.hasDictationKey = false;
-  } catch {}
-  try { CustomKeyboard.requestHeight(layout.requestedHeight); } catch {}
-  CustomKeyboard.present(<KeyboardRoot initialSettings={initialSettings} layout={layout} skin={skin} />);
+    startupTrace?.mark("ui.settings.begin");
+    const initialSettings = readKeyboardRuntimeSettings();
+    startupTrace?.setLayout(initialSettings.chineseLayout);
+    startupTrace?.mark("ui.settings.end");
+    const skin = resolveSkin(initialSettings.skinId);
+    const layout = resolveKeyboardLayout(initialSettings.layoutPreferences, skin.layoutDefaults);
+    startupTrace?.mark("ui.layoutReady");
+    try { CustomKeyboard.setToolbarVisible(false); } catch {}
+    try {
+      const keyboard = CustomKeyboard as any;
+      if (typeof keyboard.setHasDictationKey === "function") keyboard.setHasDictationKey(false);
+      else keyboard.hasDictationKey = false;
+    } catch {}
+    try { CustomKeyboard.requestHeight(layout.requestedHeight); } catch {}
+    startupTrace?.mark("ui.present.begin");
+    CustomKeyboard.present(<KeyboardRoot initialSettings={initialSettings} layout={layout} skin={skin} startupTrace={startupTrace} />);
+    startupTrace?.mark("ui.present.return");
+  } catch (error) {
+    startupTrace?.finish("error");
+    throw error;
+  }
 }
 
 main();

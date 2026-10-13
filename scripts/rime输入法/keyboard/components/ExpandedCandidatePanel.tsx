@@ -1,4 +1,4 @@
-import { Button, LazyVGrid, ScrollView, Text, useEffect, useRef, ZStack } from "scripting";
+import { Button, LazyVGrid, ScrollView, Text, useEffect, useMemo, useRef, ZStack } from "scripting";
 import type { KeyboardSkin, SkinColors } from "../../contracts/skin";
 import { firstDisplayLine, type CandidateEntry } from "../../core/rime/CandidateView";
 
@@ -28,15 +28,18 @@ export function ExpandedCandidatePanel(props: Props) {
   const cellWidth = contentWidth / COLUMN_COUNT;
   const visualGap = Math.max(0, props.skin.visuals.expandedCandidateItemSpacing);
   const cellHeight = props.skin.visuals.expandedCandidateHeight + visualGap;
-  const columns = Array.from({ length: COLUMN_COUNT }, () => ({
+  const columns = useMemo(() => Array.from({ length: COLUMN_COUNT }, () => ({
     size: cellWidth,
     spacing: 0
-  }));
+  })), [cellWidth]);
 
-  // Fill the final row with inert cells so even its unused area participates
-  // in the ScrollView's hit-testing surface.
-  const cells: Array<CandidateEntry | null> = [...props.candidates];
-  while (cells.length % COLUMN_COUNT !== 0) cells.push(null);
+  // Keep the exact gapless touch geometry; only avoid cloning/padding the
+  // potentially large list when an unrelated state causes another render.
+  const cells = useMemo(() => {
+    const next: Array<CandidateEntry | null> = [...props.candidates];
+    while (next.length % COLUMN_COUNT !== 0) next.push(null);
+    return next;
+  }, [props.candidates]);
 
   const loadTimerRef = useRef<any>(null);
   const loadRequestedCountRef = useRef(-1);

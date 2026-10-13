@@ -406,3 +406,666 @@ test("single and multi-character candidate slots absorb visual spacing inside to
     assert.ok(multiple + gap >= multiple, source);
   }
 });
+
+function createPagedRimeSession(total, pageSize, initialPage = 0, initialHighlight = 0) {
+  let page = initialPage;
+  let highlight = initialHighlight;
+  const counts = { pageDown: 0, pageUp: 0, highlight: 0, context: 0 };
+  const session = {
+    get context() {
+      counts.context++;
+      const from = page * pageSize;
+      return { menu: {
+        pageNo: page, pageSize,
+        highlightedIndex: highlight,
+        isLastPage: from + pageSize >= total,
+        candidates: Array.from({ length: Math.min(pageSize, Math.max(0, total - from)) },
+          (_, index) => ({ text: "第" + (from + index), comment: null }))
+      }};
+    },
+    processKey(key) {
+      if (key === 0xff56 && (page + 1) * pageSize < total) {
+        page++;
+        highlight = 0;
+        counts.pageDown++;
+        return true;
+      }
+      if (key === 0xff55 && page > 0) {
+        page--;
+        highlight = 0;
+        counts.pageUp++;
+        return true;
+      }
+      if (key === 0xff54 && highlight + 1 < Math.min(pageSize, total - page * pageSize)) {
+        highlight++;
+        counts.highlight++;
+        return true;
+      }
+      if (key === 0xff52 && highlight > 0) {
+        highlight--;
+        counts.highlight++;
+        return true;
+      }
+      return false;
+    }
+  };
+  return { session, counts, state: () => ({ page, highlight }) };
+}
+
+test("incremental candidate collector preserves exact original indices, order, hasMore and cursor", () => {
+  const { RimeEngine } = load("core/rime/RimeEngine.ts", ["RimeEngine"], {
+    KEY_PAGE_DOWN: 0xff56, KEY_PAGE_UP: 0xff55,
+    KEY_UP: 0xff52, KEY_DOWN: 0xff54,
+    KEY_ESCAPE: 0xff1b, T9_SCHEMA_ID: "wanxiang_t9"
+  });
+  for (const fixture of [
+    { total: 50, size: 8, page: 0, highlight: 3 },
+    { total: 41, size: 5, page: 1, highlight: 2 },
+    { total: 19, size: 7, page: 0, highlight: 0 },
+    { total: 68, size: 8, page: 2, highlight: 6 }
+  ]) {
+    const baseline = createPagedRimeSession(fixture.total, fixture.size, fixture.page, fixture.highlight);
+    const optimized = createPagedRimeSession(fixture.total, fixture.size, fixture.page, fixture.highlight);
+    const oldEngine = new RimeEngine(baseline.session);
+    const newEngine = new RimeEngine(optimized.session);
+    let accumulated = [];
+    for (let limit = 8; limit <= fixture.total + 16; limit += 8) {
+      const reference = oldEngine.collectCandidateBatch(limit);
+      const next = newEngine.collectCandidateBatch(limit, accumulated.length);
+      accumulated = [...accumulated, ...next.items];
+      assert.deepEqual(JSON.parse(JSON.stringify(accumulated)),
+        JSON.parse(JSON.stringify(reference.items)), JSON.stringify({ fixture, limit }));
+      assert.equal(next.hasMore, reference.hasMore);
+      assert.equal(optimized.state().page, fixture.page);
+      assert.equal(optimized.state().highlight, fixture.highlight);
+      assert.equal(baseline.state().page, fixture.page);
+      assert.equal(baseline.state().highlight, fixture.highlight);
+      assert.deepEqual(optimized.counts, baseline.counts);
+    }
+  }
+});
+
+test("incremental collector avoids rebuilding prior candidate wrappers without changing native work", () => {
+  const { RimeEngine } = load("core/rime/RimeEngine.ts", ["RimeEngine"], {
+    KEY_PAGE_DOWN: 0xff56, KEY_PAGE_UP: 0xff55,
+    KEY_UP: 0xff52, KEY_DOWN: 0xff54,
+    KEY_ESCAPE: 0xff1b, T9_SCHEMA_ID: "wanxiang_t9"
+  });
+  const old = createPagedRimeSession(1024, 8, 0, 3);
+  const next = createPagedRimeSession(1024, 8, 0, 3);
+  const before = new RimeEngine(old.session);
+  const after = new RimeEngine(next.session);
+  let baselineWrappers = 0;
+  let incrementalWrappers = 0;
+  let previousCount = 0;
+  for (let limit = 96; limit <= 576; limit += 96) {
+    const original = before.collectCandidateBatch(limit);
+    const increment = after.collectCandidateBatch(limit, previousCount);
+    baselineWrappers += original.items.length;
+    incrementalWrappers += increment.items.length;
+    previousCount += increment.items.length;
+    assert.equal(previousCount, original.items.length);
+    assert.equal(original.hasMore, increment.hasMore);
+  }
+  assert.equal(baselineWrappers, 2016);
+  assert.equal(incrementalWrappers, 576);
+  assert.equal(baselineWrappers - incrementalWrappers, 1440);
+  assert.deepEqual(next.counts, old.counts);
+  assert.equal(next.state().highlight, 3);
+  assert.equal(next.state().page, 0);
+});
+
+test("Shift/Caps never mutates Rime and keyboard skips T9 publish for it", () => {
+  let probes = 0;
+  let peeks = 0;
+  const engine = {
+    peek: () => { peeks++; return { context: { preedit: "ni" }, commit: null }; },
+    get asciiMode() { return false; },
+    processKey() { probes++; throw Error("Shift must not process Rime"); },
+    clearComposition() { probes++; throw Error("Shift must not clear Rime"); },
+    toggleAsciiMode() { probes++; throw Error("Shift must not change mode"); }
+  };
+  const { InputController } = load("core/input/InputController.ts", ["InputController"], {
+    KEY_BACKSPACE: 8, KEY_RETURN: 13, KEY_SPACE: 32
+  });
+  let state = { shifted: false, capsLocked: false, lastShiftTapAt: 0 };
+  let first = new InputController(engine).dispatch({ type: "toggleShift" }, state, 1000);
+  assert.equal(first.shifted, true);
+  assert.equal(first.capsLocked, false);
+  state = { shifted: first.shifted, capsLocked: first.capsLocked, lastShiftTapAt: first.lastShiftTapAt };
+  const second = new InputController(engine).dispatch({ type: "toggleShift" }, state, 1200);
+  assert.equal(second.capsLocked, true);
+  assert.equal(second.shifted, true);
+  assert.equal(probes, 0);
+  assert.equal(peeks, 2);
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  assert.match(root, /if \(!effect\.steps && command\.type !== "toggleShift"\) publish\(effect\.snapshot\);/);
+});
+
+test("grapheme segmenter is reused and produces unchanged character counts", () => {
+  let created = 0;
+  class SegmenterCounter {
+    constructor() { created++; this.impl = new Intl.Segmenter(undefined, { granularity: "grapheme" }); }
+    segment(text) { return this.impl.segment(text); }
+  }
+  const { backspaceUnitCount } = load("keyboard/edit/EditController.ts",
+    ["backspaceUnitCount"], { Intl: { Segmenter: SegmenterCounter } });
+  const inputs = ["", "hello", "A👨‍👩‍👧‍👦好", "🇸🇬", "e\u0301", "👍🏽👍🏽"];
+  for (const input of inputs) {
+    const oldValue = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(input)).length;
+    assert.equal(backspaceUnitCount(input), oldValue);
+  }
+  assert.equal(created, 1);
+  assert.equal(backspaceUnitCount("复合字符"), 4);
+  assert.equal(created, 1);
+});
+
+test("keyboard editor disposal releases large undo data and leaves host untouched", () => {
+  const calls = [];
+  const host = { insertText(value) { calls.push(value); } };
+  const { KeyboardEditController } = load("keyboard/edit/EditController.ts",
+    ["KeyboardEditController"], { CustomKeyboard: host });
+  const controller = new KeyboardEditController();
+  controller.rememberDeletedText("字".repeat(50000));
+  assert.equal(controller.deletedText.length, 50000);
+  controller.dispose();
+  assert.equal(controller.deletedText, "");
+  assert.equal(controller.snapshot, null);
+  assert.equal(controller.disposed, true);
+  controller.restoreDeleted();
+  controller.execute({ type: "deleteAll" });
+  assert.deepEqual(calls, []);
+});
+
+test("T9 publish reads runtime mode/schema once before Lua probe", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const start = source.indexOf("  function publish(snapshot:");
+  const end = source.indexOf("\n  function dispatch(", start);
+  const publish = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(publish, /const t9Active = Boolean\(engine && !engine\.asciiMode && engine\.isT9BridgeTargetSchema\(\)\);/);
+  assert.match(publish, /if \(t9Active && engine\) t9Options = engine\.queryT9PinyinOptions\(\);/);
+  assert.match(publish, /const visiblePreedit = t9Active/);
+  assert.equal((publish.match(/engine\.isT9BridgeTargetSchema\(\)/g) || []).length, 1);
+  // setAsciiMode still samples after the Lua probe, preserving existing sequence.
+  assert.match(publish, /if \(engine\) setAsciiMode\(engine\.asciiMode\)/);
+});
+
+test("keyboard metrics cache reuses geometry and invalidates on width/layout/skin changes", () => {
+  const { resolveKeyboardMetrics, createKeyboardMetricsResolver } =
+    load("layout/metrics.ts", ["resolveKeyboardMetrics", "createKeyboardMetricsResolver"]);
+  const layout = { keyboardBodyHeight: 220, topSurfaceHeight: 46, requestedHeight: 278 };
+  const geometry = {
+    t9LeftColumn: { min: 40, max: 200, fraction: 0.19 },
+    t9RightColumn: { min: 40, max: 90, fraction: 0.19 },
+    numericLeftColumn: { min: 35, max: 75, fraction: 0.17 },
+    numericRightColumn: { min: 35, max: 75, fraction: 0.17 }
+  };
+  const resolver = createKeyboardMetricsResolver();
+  const a = resolver(390, layout, geometry);
+  for (let i = 0; i < 100; i++) {
+    assert.equal(resolver(390, layout, geometry), a);
+  }
+  const rotated = resolver(760, layout, geometry);
+  assert.notEqual(rotated, a);
+  assert.deepEqual(JSON.parse(JSON.stringify(rotated)),
+    JSON.parse(JSON.stringify(resolveKeyboardMetrics(760, layout, geometry))));
+  const changedLayout = { ...layout, keyboardBodyHeight: 240 };
+  const changedSize = resolver(760, changedLayout, geometry);
+  assert.notEqual(changedSize, rotated);
+  assert.notEqual(changedSize.keyHeight, rotated.keyHeight);
+  const changedGeometry = {
+    ...geometry, t9LeftColumn: { ...geometry.t9LeftColumn, fraction: 0.27 }
+  };
+  const changedSkin = resolver(760, changedLayout, changedGeometry);
+  assert.notEqual(changedSkin, changedSize);
+  assert.notEqual(changedSkin.t9.leftWidth, changedSize.t9.leftWidth);
+  assert.equal(resolver(760, changedLayout, changedGeometry), changedSkin);
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  assert.match(source, /const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> \| null>\(null\);/);
+  assert.match(source, /metricsResolverRef\.current!\(width, props\.layout, skin\.geometry\)/);
+});
+
+test("keyface memo cache remains tied to semantic and mode changes, not candidate state", () => {
+  const view = fs.readFileSync(path.join(root, "keyboard/components/KeyView.tsx"), "utf8");
+  assert.match(view, /const face = useMemo\(\(\) => projectBaseKeyFace\(/);
+  assert.match(view, /\[definition, preferences, props\.shifted, props\.capsLocked, props\.asciiMode\]\)/);
+  assert.doesNotMatch(view, /\[candidate|highlightedIndex/);
+  assert.match(view, /const manualGesture = useMemo\(\(\) => \(\{/);
+});
+
+test("expanded grid reuses column and padded candidate arrays without changing hit layout", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/components/ExpandedCandidatePanel.tsx"), "utf8");
+  assert.match(source, /const columns = useMemo\(\(\) => Array\.from\([\s\S]*?\[cellWidth\]\)/);
+  assert.match(source, /const cells = useMemo\(\(\) => \{/);
+  assert.match(source, /while \(next\.length % COLUMN_COUNT !== 0\) next\.push\(null\)/);
+  assert.match(source, /\}, \[props\.candidates\]\)/);
+  assert.doesNotMatch(source, /<HStack/);
+  assert.match(source, /<LazyVGrid/);
+  assert.match(source, /spacing=\{0\}/);
+  assert.match(source, /contentShape="rect"/);
+});
+
+test("Haptics start/dispose races do not recreate players after keyboard unmount", async () => {
+  let releaseStart;
+  const stats = { constructed: 0, stopped: 0, disposed: 0, createdPlayers: 0, transient: 0 };
+  let owned;
+  class Engine {
+    static supportsHaptics = true;
+    constructor() { stats.constructed++; owned = this; }
+    startAsync() { return new Promise(resolve => { releaseStart = resolve; }); }
+    stop() { stats.stopped++; }
+    dispose() { stats.disposed++; }
+    makePlayer() { stats.createdPlayers++; return { start() {} }; }
+  }
+  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
+    { HapticEngine: Engine, Haptics: { supportsHaptics: true, transient() { stats.transient++; } },
+      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {} }
+  );
+  prepareKeyboardHaptics(true);
+  assert.equal(stats.constructed, 1);
+  disposeKeyboardHaptics();
+  assert.equal(stats.stopped, 1);
+  assert.equal(stats.disposed, 1);
+  releaseStart();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(stats.createdPlayers, 0);
+  owned.onStopped?.();
+  owned.onReset?.();
+  assert.equal(stats.constructed, 1);
+  playKeyboardHaptic(false);
+  assert.equal(stats.constructed, 1);
+});
+
+test("Haptics keeps only three reusable player objects during continuous typing", async () => {
+  const stats = { createdPlayers: 0, played: 0, constructed: 0, disposed: 0 };
+  class Engine {
+    static supportsHaptics = true;
+    constructor() { stats.constructed++; }
+    startAsync() { return Promise.resolve(); }
+    stop() {}
+    dispose() { stats.disposed++; }
+    makePlayer() {
+      stats.createdPlayers++;
+      return { start() { stats.played++; } };
+    }
+  }
+  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
+    { HapticEngine: Engine,
+      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
+      Haptics: { supportsHaptics: true, transient() {} } }
+  );
+  prepareKeyboardHaptics(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  for (let i = 0; i < 100; i++) playKeyboardHaptic(true);
+  assert.equal(stats.createdPlayers, 3);
+  assert.equal(stats.played, 100);
+  assert.equal(stats.constructed, 1);
+  disposeKeyboardHaptics();
+  assert.equal(stats.disposed, 1);
+});
+
+test("rejected native Haptics stop/dispose promises are settled after teardown", async () => {
+  const stats = { stop: 0, dispose: 0 };
+  class Engine {
+    static supportsHaptics = true;
+    startAsync() { return Promise.resolve(); }
+    stop() { stats.stop++; return Promise.reject(new Error("native engine stopped")); }
+    dispose() { stats.dispose++; return Promise.reject(new Error("native resource released")); }
+    makePlayer() { return { start() {} }; }
+  }
+  const { prepareKeyboardHaptics, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"],
+    { HapticEngine: Engine,
+      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
+      Haptics: { supportsHaptics: true, transient() {} } }
+  );
+  prepareKeyboardHaptics(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  disposeKeyboardHaptics();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(stats.stop, 1);
+  assert.equal(stats.dispose, 1);
+});
+
+test("async failure of fallback transient feedback is consumed without unhandled rejection", async () => {
+  const stats = { attempts: 0 };
+  const { playKeyboardHaptic, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"],
+    { Haptics: { supportsHaptics: true,
+      transient() { stats.attempts++; return Promise.reject(new Error("transient unavailable")); }
+    } }
+  );
+  playKeyboardHaptic(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(stats.attempts, 1);
+  disposeKeyboardHaptics();
+});
+
+test("keyboard dismiss releases Core Haptics even when extension view stays mounted", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const start = source.indexOf("  function dismissKeyboard() {");
+  const end = source.indexOf("\n  function renderKey(", start);
+  const block = source.slice(start, end);
+  assert.ok(start > 0 && end > start);
+  assert.match(block, /CustomKeyboard\.dismiss\(\);[\s\S]*?disposeKeyboardHaptics\(\);/);
+  assert.match(source, /onDismissKeyboard=\{dismissKeyboard\}/);
+});
+
+function runtimeFixture(overrides = {}) {
+  const stats = { setup: 0, list: 0, sessions: 0, closed: 0 };
+  let cancelled = false;
+  let setupResolve;
+  class Session {
+    constructor() {
+      stats.sessions++;
+      if (overrides.cancelOnSession) cancelled = true;
+    }
+    get currentSchema() { return { id: "wanxiang" }; }
+    close() { stats.closed++; }
+  }
+  const Rime = {
+    isSetUp: !overrides.setupPending,
+    Session,
+    setup: () => {
+      stats.setup++;
+      return new Promise(resolve => { setupResolve = resolve; });
+    },
+    listSchemas: async () => { stats.list++; return [{ id: "wanxiang" }]; }
+  };
+  const { prepareKeyboardRimeRuntime, RimeRuntimeCancelled } =
+    load("keyboard/runtime/RimeRuntimeCoordinator.ts",
+      ["prepareKeyboardRimeRuntime", "RimeRuntimeCancelled"], {
+        Rime,
+        RimeEngine: class {
+          constructor(session) { this.session = session; }
+          get currentSchemaId() { return "wanxiang"; }
+          close() { this.session.close(); }
+        },
+        listRuntimeSupportedRimeSchemes: items => items,
+        resolveSchemaForChineseLayout: () => ({ id: "wanxiang", name: "万象" }),
+        describeSchemes: () => "wanxiang",
+        listInstalledRimeSchemes: async () => [],
+        prepareT9BridgeRuntime: async () => ({ ready: true, changed: false })
+      });
+  return {
+    stats, RimeRuntimeCancelled, prepareKeyboardRimeRuntime,
+    setCancelled: () => { cancelled = true; },
+    isCancelled: () => cancelled,
+    resolveSetup: () => { if (setupResolve) setupResolve(); }
+  };
+}
+
+test("late Rime setup completion after keyboard dismissal does not start schema or session", async () => {
+  const f = runtimeFixture({ setupPending: true });
+  const promise = f.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    isCancelled: f.isCancelled
+  });
+  assert.equal(f.stats.setup, 1);
+  f.setCancelled();
+  f.resolveSetup();
+  await assert.rejects(promise, err => err instanceof f.RimeRuntimeCancelled);
+  assert.equal(f.stats.list, 0);
+  assert.equal(f.stats.sessions, 0);
+  assert.equal(f.stats.closed, 0);
+});
+
+test("cancel during native session constructor releases newly allocated Rime session", async () => {
+  const f = runtimeFixture({ cancelOnSession: true });
+  await assert.rejects(f.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    isCancelled: f.isCancelled
+  }), err => err instanceof f.RimeRuntimeCancelled);
+  assert.equal(f.stats.sessions, 1);
+  assert.equal(f.stats.closed, 1);
+});
+
+test("normal Rime initialization still returns open session with identical schema", async () => {
+  const f = runtimeFixture();
+  const engine = await f.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang"
+  });
+  assert.equal(engine.currentSchemaId, "wanxiang");
+  assert.equal(f.stats.sessions, 1);
+  assert.equal(f.stats.closed, 0);
+  engine.close();
+  assert.equal(f.stats.closed, 1);
+});
+
+test("keyboard teardown invalidates native haptics lifecycle callbacks", async () => {
+  let live;
+  class Engine {
+    static supportsHaptics = true;
+    constructor() { live=this; }
+    startAsync() { return Promise.resolve(); }
+    stop() { return Promise.resolve(); }
+    dispose() { return Promise.resolve(); }
+    makePlayer() { return { start() {} }; }
+  }
+  const h = load("keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"], {
+      HapticEngine: Engine, HapticPattern: class {}, HapticEvent: class {},
+      HapticEventParameter: class {}, Haptics: { supportsHaptics: true, transient() {} }
+    });
+  h.prepareKeyboardHaptics(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(typeof live.onStopped, "function");
+  assert.equal(typeof live.onReset, "function");
+  h.disposeKeyboardHaptics();
+  assert.equal(live.onStopped, null);
+  assert.equal(live.onReset, null);
+});
+
+function mockTraceStorage() {
+  const map = new Map();
+  const counters = { reads: 0, writes: 0 };
+  const Storage = {
+    get(key, opts) {
+      assert.equal(opts.shared, true);
+      counters.reads++;
+      return map.get(key) ?? null;
+    },
+    set(key, value, opts) {
+      assert.equal(opts.shared, true);
+      counters.writes++;
+      map.set(key, value);
+      return true;
+    }
+  };
+  return { map, counters, Storage };
+}
+
+test("startup trace is disabled by default, with zero events and no writes", () => {
+  const env = mockTraceStorage();
+  const { createStartupTrace, STARTUP_TRACE_LAST_KEY } =
+    load("keyboard/runtime/StartupTrace.ts",
+      ["createStartupTrace", "STARTUP_TRACE_LAST_KEY"], { Storage: env.Storage });
+  assert.equal(createStartupTrace(), null);
+  assert.equal(env.counters.reads, 1);
+  assert.equal(env.counters.writes, 0);
+  assert.equal(env.map.has(STARTUP_TRACE_LAST_KEY), false);
+});
+
+test("startup trace writes exactly once on ready, with safe timing records", () => {
+  const env = mockTraceStorage();
+  let time = 1000;
+  const clock = { now: () => time };
+  const exports = load("keyboard/runtime/StartupTrace.ts", [
+    "STARTUP_TRACE_ENABLED_KEY", "STARTUP_TRACE_LAST_KEY",
+    "createStartupTrace", "readLastStartupTrace", "setStartupTraceEnabled",
+    "clearLastStartupTrace", "isStartupTraceEnabled"
+  ], { Storage: env.Storage, performance: clock });
+  assert.equal(exports.setStartupTraceEnabled(true), true);
+  assert.equal(exports.isStartupTraceEnabled(), true);
+  const trace = exports.createStartupTrace();
+  trace.setLayout("qwerty");
+  trace.mark("ui.settings.begin");
+  time += 12.24;
+  trace.mark("ui.settings.end");
+  time += 34.32;
+  trace.mark("rime.runtimeReady");
+  trace.finish("ready");
+  trace.mark("ignoredAfterFinish");
+  trace.finish("cancelled");
+  const latest = exports.readLastStartupTrace();
+  assert.equal(latest.version, 1);
+  assert.equal(latest.layout, "qwerty");
+  assert.equal(latest.outcome, "ready");
+  assert.equal(latest.marks.length, 4);
+  assert.deepEqual(Array.from(latest.marks, e => e.phase), [
+    "ui.settings.begin", "ui.settings.end", "rime.runtimeReady", "startup.ready"
+  ]);
+  assert.equal(latest.marks[0].elapsedMs, 0);
+  assert.equal(latest.marks[1].elapsedMs, 12.2);
+  assert.equal(latest.marks[2].elapsedMs, 46.6);
+  assert.equal(env.counters.writes, 2);
+  assert.equal(JSON.stringify(latest).includes("preedit"), false);
+  assert.equal(JSON.stringify(latest).includes("candidate"), false);
+  assert.equal(exports.clearLastStartupTrace(), true);
+  assert.equal(exports.readLastStartupTrace(), null);
+});
+
+test("startup trace handles cancellation, storage failures, and bounds retained events", () => {
+  const env = mockTraceStorage();
+  env.map.set("rime_keyboard_startup_trace_enabled_v1", true);
+  const { createStartupTrace, readLastStartupTrace } =
+    load("keyboard/runtime/StartupTrace.ts",
+      ["createStartupTrace", "readLastStartupTrace"], { Storage: env.Storage });
+  const trace = createStartupTrace();
+  trace.setLayout("t9");
+  for (let i = 0; i < 100; i++) trace.mark("rime.schemas.begin");
+  trace.finish("cancelled");
+  const stored = readLastStartupTrace();
+  assert.equal(stored.outcome, "cancelled");
+  assert.equal(stored.marks.length, 48);
+  assert.ok(stored.marks.every(item => item.phase.length <= 64));
+  const noStorage = load("keyboard/runtime/StartupTrace.ts",
+    ["createStartupTrace", "setStartupTraceEnabled", "readLastStartupTrace"],
+    { Storage: { get() { throw Error("Unavailable"); }, set() { throw Error("Unavailable"); } } });
+  assert.equal(noStorage.createStartupTrace(), null);
+  assert.equal(noStorage.setStartupTraceEnabled(true), false);
+  assert.equal(noStorage.readLastStartupTrace(), null);
+});
+
+test("startup view diagnostics remain decoupled from production UI and avoid first-paint claims", () => {
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  const settings = fs.readFileSync(path.join(__dirname, "../ui/settings/SettingsHomePage.tsx"), "utf8");
+  const diagnostics = fs.readFileSync(path.join(__dirname, "../ui/settings/StartupDiagnosticsPage.tsx"), "utf8");
+  assert.match(root, /const startupTrace = createStartupTrace\(\)/);
+  assert.match(root, /startupTrace\?\.mark\("ui\.present\.begin"\)/);
+  assert.match(root, /startupTrace\?\.mark\("ui\.present\.return"\)/);
+  assert.match(root, /startupTrace\?\.mark\("ui\.firstPublished"\)/);
+  assert.match(root, /startupTrace\?\.finish\("ready"\)/);
+  assert.match(root, /startupTrace\?\.finish\("error"\)/);
+  assert.match(root, /startupTrace\?\.finish\("cancelled"\)/);
+  assert.match(settings, /<NavigationLink title="性能诊断" destination=\{<StartupDiagnosticsPage \/>\} \/>/);
+  assert.match(diagnostics, /呈现接口返回，不等于实际画面出现/);
+  assert.doesNotMatch(diagnostics, /Clipboard|candidate\.text|preedit\.text/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../keyboard/runtime/RimeRuntimeCoordinator.ts"), "utf8"),
+    /trace\?\.mark\("rime\.schemas\.begin"\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, "../core/rime/T9BridgeRuntime.ts"), "utf8"),
+    /trace\?\.mark\("t9\.fastpath"\)/);
+});
+
+test("warm Rime startup stages exclude setup and T9, cold startup includes setup", async () => {
+  const phases = [];
+  const warm = runtimeFixture();
+  const warmEngine = await warm.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    startupTrace: { mark: name => phases.push(name) }
+  });
+  warmEngine.close();
+  assert.ok(phases.indexOf("rime.schemas.begin") < phases.indexOf("rime.schemas.end"));
+  assert.ok(phases.indexOf("rime.session.begin") < phases.indexOf("rime.session.end"));
+  assert.ok(phases.indexOf("rime.session.end") < phases.indexOf("rime.runtimeReady"));
+  assert.ok(phases.includes("rime.setup.skipped"));
+  assert.ok(!phases.some(name => name.startsWith("t9.")));
+  const cold = runtimeFixture({ setupPending: true });
+  const names = [];
+  const pending = cold.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    startupTrace: { mark: name => names.push(name) }
+  });
+  assert.deepEqual(names, ["rime.setup.begin"]);
+  cold.resolveSetup();
+  const coldEngine = await pending;
+  coldEngine.close();
+  assert.ok(names.indexOf("rime.setup.end") < names.indexOf("rime.schemas.begin"));
+  assert.ok(names.includes("rime.runtimeReady"));
+});
+
+test("cancelled startup has no runtime ready milestone and closes no unused session", async () => {
+  const events = [];
+  const f = runtimeFixture({ setupPending: true });
+  const waiting = f.prepareKeyboardRimeRuntime({
+    chineseLayout: "t9", preferredSchemaId: "wanxiang_t9",
+    isCancelled: f.isCancelled,
+    startupTrace: { mark: name => events.push(name) }
+  });
+  f.setCancelled();
+  f.resolveSetup();
+  await assert.rejects(waiting);
+  assert.deepEqual(events, ["rime.setup.begin", "rime.setup.end"]);
+  assert.equal(f.stats.sessions, 0);
+});
+
+test("unready Rime-bound input is marked once without storing text or replaying keys", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const segment = source.slice(source.indexOf("    const controller = controllerRef.current;"),
+    source.indexOf("    const effect = controller.dispatch(command,"));
+  assert.match(segment, /if \(!controller\)/);
+  assert.match(segment, /if \(!firstInputBeforeReadyRef\.current\)/);
+  assert.match(segment, /props\.startupTrace\?\.mark\("input\.firstBeforeReady"\)/);
+  assert.doesNotMatch(segment, /command\.text|command\.index|setTimeout\(|queue|replay/);
+  const firstIndex = source.indexOf('props.startupTrace?.mark("input.firstBeforeReady")');
+  const lastIndex = source.indexOf("    const effect = controller.dispatch(command,");
+  assert.ok(firstIndex >= 0 && firstIndex < lastIndex);
+});
+
+test("copied startup report includes all phases and accurate differences", () => {
+  const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
+  const report = { version: 1, recordedAt: 1780000000000, layout: "t9", outcome: "ready", marks: [
+    { phase: "ui.settings.begin", elapsedMs: 0 },
+    { phase: "rime.setup.begin", elapsedMs: 14.7 },
+    { phase: "rime.setup.end", elapsedMs: 80.2 },
+    { phase: "startup.ready", elapsedMs: 90.4 }
+  ] };
+  const output = formatStartupTraceReport(report);
+  assert.ok(output.includes("Rime 启动性能诊断报告"));
+  assert.ok(output.includes("布局：九键"));
+  assert.ok(output.includes("状态：可输入"));
+  assert.ok(output.includes("JS 启动阶段累计：90.4 ms"));
+  assert.ok(output.includes("rime.setup.end：累计 80.2 ms，本阶段 +65.5 ms"));
+  assert.equal(output.split("\n").filter(line => line.includes("：累计 ") && line.includes("本阶段 +")).length, 4);
+  assert.ok(output.includes("不含静态模块加载、系统键盘切换和屏幕首次绘制"));
+});
+test("startup report handles cancelled and failed sessions with zero phases", () => {
+  const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
+  const empty = { version: 1, recordedAt: 0, layout: "qwerty", outcome: "cancelled", marks: [] };
+  assert.ok(formatStartupTraceReport(empty).includes("状态：提前关闭"));
+  assert.ok(formatStartupTraceReport(empty).includes("JS 启动阶段累计：0 ms"));
+  assert.ok(formatStartupTraceReport({ ...empty, outcome: "error", marks: [
+    { phase: "startup.error", elapsedMs: 7.8 }
+  ] }).includes("本阶段 +7.8 ms"));
+});
+test("one-tap diagnostic copy reads latest persisted trace and awaits pasteboard", () => {
+  const source = fs.readFileSync(path.join(root, "ui/settings/StartupDiagnosticsPage.tsx"), "utf8");
+  assert.ok(source.includes('title="一键复制完整诊断报告"'));
+  assert.ok(source.includes("const latest = readLastStartupTrace();"));
+  assert.ok(source.includes("await Pasteboard.setString(formatStartupTraceReport(latest));"));
+  assert.ok(source.includes("复制失败"));
+  assert.ok(source.includes("没有可复制的启动记录"));
+});
