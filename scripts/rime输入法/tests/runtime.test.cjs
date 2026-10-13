@@ -1069,3 +1069,20 @@ test("one-tap diagnostic copy reads latest persisted trace and awaits pasteboard
   assert.ok(source.includes("复制失败"));
   assert.ok(source.includes("没有可复制的启动记录"));
 });
+
+test("auxiliary clipboard and common-phrase scroll panes expose continuous hit geometry", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/components/AuxiliarySurfaceHost.tsx"), "utf8");
+  assert.equal((source.match(/<ScrollView\b/g) || []).length, 3);
+  assert.ok(source.includes('const HIT_SURFACE = "rgba(0,0,0,0.001)"'));
+  assert.ok((source.match(/background=\{HIT_SURFACE as any\}\s+contentShape="rect"/g) || []).length >= 7,
+    "scroll view, content and visual gaps must own transparent rectangular hit regions");
+  assert.ok(source.includes("padding={{ bottom: index < clipboardItems.length - 1 ? 2 : 0 }}"));
+  assert.ok(source.includes('frame={{ width: navigationWidth, height: hitTargetSize + 1, alignment: "leading" as any }}'));
+  assert.ok(source.includes("padding={{ bottom: categoryIndex < categories.length - 1 ? 12 : 0 }}"));
+  assert.ok(source.includes("padding={{ bottom: phraseIndex < category.phrases.length - 1 ? 6 : 0 }}"));
+  assert.ok(source.includes('simultaneousGesture={DragGesture({ minDistance: 28, coordinateSpace: "local" })'));
+  assert.doesNotMatch(source, /\s+gesture=\{DragGesture\(/);
+  assert.ok(source.includes("onTapGesture={() => selectPhrase(phrase.text)}"));
+  assert.ok(source.includes("onTapGesture={() => setSelectedCategoryId(category.id)}"));
+  assert.ok(source.includes("if (horizontal && dx <= -deleteThreshold) props.onDelete()"));
+});
