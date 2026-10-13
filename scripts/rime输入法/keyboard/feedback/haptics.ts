@@ -31,11 +31,20 @@ function clearPreparedState() {
   pool = null;
 }
 
+/** Keyboard gestures must never block on haptic cleanup or transient playback.
+ * Scripting's native methods may reject asynchronously, which try/catch
+ * alone does not intercept. Do not retain errors or log on the input path. */
+function ignoreAsyncFailure(result: any) {
+  if (result && typeof result.then === "function") {
+    void Promise.resolve(result).catch(() => {});
+  }
+}
+
 function convenienceTransient() {
   try {
     const { Haptics } = globals();
     if (Haptics?.transient && Haptics.supportsHaptics !== false) {
-      void Haptics.transient(INTENSITY, SHARPNESS);
+      ignoreAsyncFailure(Haptics.transient(INTENSITY, SHARPNESS));
       return true;
     }
   } catch {}
@@ -68,8 +77,11 @@ export function disposeKeyboardHaptics() {
   engine = null;
   clearPreparedState();
   if (!old) return;
-  try { void old.stop?.(); } catch {}
-  try { old.dispose?.(); } catch {}
+  // Release native -> JS closure references before stopping the engine.
+  try { old.onStopped = null; } catch {}
+  try { old.onReset = null; } catch {}
+  try { ignoreAsyncFailure(old.stop?.()); } catch {}
+  try { ignoreAsyncFailure(old.dispose?.()); } catch {}
 }
 
 export function prepareKeyboardHaptics(enabled: boolean) {

@@ -23,7 +23,7 @@ import { resolveSkin } from "../skin/registry";
 import { resolveEffectiveColorScheme } from "../skin/appearance";
 import {
   resolveKeyboardLayout,
-  resolveKeyboardMetrics,
+  createKeyboardMetricsResolver,
   type KeyboardMetrics,
   type ResolvedKeyboardLayout
 } from "../layout/metrics";
@@ -99,6 +99,8 @@ function KeyboardRoot(props: {
   const colorScheme = useColorScheme();
   const effectiveScheme = resolveEffectiveColorScheme(colorScheme === "dark" ? "dark" : "light");
   const colors = effectiveScheme === "dark" ? skin.dark : skin.light;
+  const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> | null>(null);
+  if (!metricsResolverRef.current) metricsResolverRef.current = createKeyboardMetricsResolver();
   const engineRef = useRef<RimeEngine | null>(null);
   const controllerRef = useRef<InputController | null>(null);
   const editControllerRef = useRef<KeyboardEditController | null>(null);
@@ -156,7 +158,11 @@ function KeyboardRoot(props: {
     const chineseLayout = chineseLayoutRef.current;
     const preferredSchemaId = initialSettings.schemes[chineseLayout];
 
-    void prepareKeyboardRimeRuntime({ chineseLayout, preferredSchemaId })
+    void prepareKeyboardRimeRuntime({
+      chineseLayout,
+      preferredSchemaId,
+      isCancelled: () => disposed
+    })
       .then((engine) => {
         if (disposed) {
           engine.close();
@@ -213,17 +219,18 @@ function KeyboardRoot(props: {
     setHighlightedCandidateIndex(Math.max(0, context?.menu?.highlightedIndex ?? 0));
 
     const engine = engineRef.current;
+    // F23 is essential after mutations, but the same mode/schema should not
+    // be re-read just to derive the visible preedit later in this publish.
+    const t9Active = Boolean(engine && !engine.asciiMode && engine.isT9BridgeTargetSchema());
     let t9Options: string[] = [];
-    if (engine && !engine.asciiMode && engine.isT9BridgeTargetSchema()) {
-      t9Options = engine.queryT9PinyinOptions();
-    }
+    if (t9Active && engine) t9Options = engine.queryT9PinyinOptions();
     setT9PinyinOptions((previous) => sameStringList(previous, t9Options) ? previous : t9Options);
 
     if (!nextPreedit) {
       resetExpandedCandidates();
     }
 
-    const visiblePreedit = engine && !engine.asciiMode && engine.isT9BridgeTargetSchema()
+    const visiblePreedit = t9Active
       ? t9DisplayedPreedit(nextPreedit, t9Options)
       : nextPreedit;
     markedTextActiveRef.current = applyRimeHostText({
@@ -307,7 +314,10 @@ function KeyboardRoot(props: {
     }
     if (effect.lastShiftTapAt !== lastShiftTapRef.current) lastShiftTapRef.current = effect.lastShiftTapAt;
     if (command.type === "toggleAscii") setSurfaceLayer("main");
-    if (!effect.steps) publish(effect.snapshot);
+    // Shift/Caps modifies only keyboard-side state: Rime, its candidates and
+    // host marked text have not changed. Avoid an extra T9 Lua probe and
+    // native marked-text write on every Shift tap.
+    if (!effect.steps && command.type !== "toggleShift") publish(effect.snapshot);
   }
 
   function moveSpaceDrag(steps: number) {
@@ -404,18 +414,24 @@ function KeyboardRoot(props: {
     expandedLoadTriggerCountRef.current = currentCount;
 
     const nextLimit = expandedLoadLimitRef.current + EXPANDED_CANDIDATE_BATCH;
-    const batch = engine.collectCandidateBatch(nextLimit);
+    // Native Rime pages still need traversing, but avoid rebuilding all
+    // previously rendered candidate wrappers on every incremental load.
+    const batch = engine.collectCandidateBatch(nextLimit, currentCount);
     expandedLoadLimitRef.current = nextLimit;
-    const madeProgress = batch.items.length > currentCount;
+    const madeProgress = batch.items.length > 0;
     setExpandedHasMore(batch.hasMore && madeProgress);
 
     if (!madeProgress) return;
-    const appended = batch.items.slice(currentCount);
-    setExpandedCandidates((previous) => [...previous, ...appended]);
+    setExpandedCandidates((previous) => [...previous, ...batch.items]);
   }
 
   function dismissKeyboard() {
-    try { CustomKeyboard.dismiss(); } catch {}
+    try {
+      CustomKeyboard.dismiss();
+      // iOS may keep the keyboard extension process alive after dismissing
+      // its view. Release Core Haptics without waiting for an unmount event.
+      disposeKeyboardHaptics();
+    } catch {}
   }
 
   function renderKey(
@@ -850,7 +866,7 @@ function KeyboardRoot(props: {
     <GeometryReader>
       {(proxy: any) => {
         const width = Math.max(240, Number(proxy.size?.width ?? 390));
-        const metrics = resolveKeyboardMetrics(width, props.layout, skin.geometry);
+        const metrics = metricsResolverRef.current!(width, props.layout, skin.geometry);
         const totalHeight = props.layout.requestedHeight;
         return (
           <ZStack

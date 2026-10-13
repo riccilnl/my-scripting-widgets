@@ -406,3 +406,465 @@ test("single and multi-character candidate slots absorb visual spacing inside to
     assert.ok(multiple + gap >= multiple, source);
   }
 });
+
+function createPagedRimeSession(total, pageSize, initialPage = 0, initialHighlight = 0) {
+  let page = initialPage;
+  let highlight = initialHighlight;
+  const counts = { pageDown: 0, pageUp: 0, highlight: 0, context: 0 };
+  const session = {
+    get context() {
+      counts.context++;
+      const from = page * pageSize;
+      return { menu: {
+        pageNo: page, pageSize,
+        highlightedIndex: highlight,
+        isLastPage: from + pageSize >= total,
+        candidates: Array.from({ length: Math.min(pageSize, Math.max(0, total - from)) },
+          (_, index) => ({ text: "第" + (from + index), comment: null }))
+      }};
+    },
+    processKey(key) {
+      if (key === 0xff56 && (page + 1) * pageSize < total) {
+        page++;
+        highlight = 0;
+        counts.pageDown++;
+        return true;
+      }
+      if (key === 0xff55 && page > 0) {
+        page--;
+        highlight = 0;
+        counts.pageUp++;
+        return true;
+      }
+      if (key === 0xff54 && highlight + 1 < Math.min(pageSize, total - page * pageSize)) {
+        highlight++;
+        counts.highlight++;
+        return true;
+      }
+      if (key === 0xff52 && highlight > 0) {
+        highlight--;
+        counts.highlight++;
+        return true;
+      }
+      return false;
+    }
+  };
+  return { session, counts, state: () => ({ page, highlight }) };
+}
+
+test("incremental candidate collector preserves exact original indices, order, hasMore and cursor", () => {
+  const { RimeEngine } = load("core/rime/RimeEngine.ts", ["RimeEngine"], {
+    KEY_PAGE_DOWN: 0xff56, KEY_PAGE_UP: 0xff55,
+    KEY_UP: 0xff52, KEY_DOWN: 0xff54,
+    KEY_ESCAPE: 0xff1b, T9_SCHEMA_ID: "wanxiang_t9"
+  });
+  for (const fixture of [
+    { total: 50, size: 8, page: 0, highlight: 3 },
+    { total: 41, size: 5, page: 1, highlight: 2 },
+    { total: 19, size: 7, page: 0, highlight: 0 },
+    { total: 68, size: 8, page: 2, highlight: 6 }
+  ]) {
+    const baseline = createPagedRimeSession(fixture.total, fixture.size, fixture.page, fixture.highlight);
+    const optimized = createPagedRimeSession(fixture.total, fixture.size, fixture.page, fixture.highlight);
+    const oldEngine = new RimeEngine(baseline.session);
+    const newEngine = new RimeEngine(optimized.session);
+    let accumulated = [];
+    for (let limit = 8; limit <= fixture.total + 16; limit += 8) {
+      const reference = oldEngine.collectCandidateBatch(limit);
+      const next = newEngine.collectCandidateBatch(limit, accumulated.length);
+      accumulated = [...accumulated, ...next.items];
+      assert.deepEqual(JSON.parse(JSON.stringify(accumulated)),
+        JSON.parse(JSON.stringify(reference.items)), JSON.stringify({ fixture, limit }));
+      assert.equal(next.hasMore, reference.hasMore);
+      assert.equal(optimized.state().page, fixture.page);
+      assert.equal(optimized.state().highlight, fixture.highlight);
+      assert.equal(baseline.state().page, fixture.page);
+      assert.equal(baseline.state().highlight, fixture.highlight);
+      assert.deepEqual(optimized.counts, baseline.counts);
+    }
+  }
+});
+
+test("incremental collector avoids rebuilding prior candidate wrappers without changing native work", () => {
+  const { RimeEngine } = load("core/rime/RimeEngine.ts", ["RimeEngine"], {
+    KEY_PAGE_DOWN: 0xff56, KEY_PAGE_UP: 0xff55,
+    KEY_UP: 0xff52, KEY_DOWN: 0xff54,
+    KEY_ESCAPE: 0xff1b, T9_SCHEMA_ID: "wanxiang_t9"
+  });
+  const old = createPagedRimeSession(1024, 8, 0, 3);
+  const next = createPagedRimeSession(1024, 8, 0, 3);
+  const before = new RimeEngine(old.session);
+  const after = new RimeEngine(next.session);
+  let baselineWrappers = 0;
+  let incrementalWrappers = 0;
+  let previousCount = 0;
+  for (let limit = 96; limit <= 576; limit += 96) {
+    const original = before.collectCandidateBatch(limit);
+    const increment = after.collectCandidateBatch(limit, previousCount);
+    baselineWrappers += original.items.length;
+    incrementalWrappers += increment.items.length;
+    previousCount += increment.items.length;
+    assert.equal(previousCount, original.items.length);
+    assert.equal(original.hasMore, increment.hasMore);
+  }
+  assert.equal(baselineWrappers, 2016);
+  assert.equal(incrementalWrappers, 576);
+  assert.equal(baselineWrappers - incrementalWrappers, 1440);
+  assert.deepEqual(next.counts, old.counts);
+  assert.equal(next.state().highlight, 3);
+  assert.equal(next.state().page, 0);
+});
+
+test("Shift/Caps never mutates Rime and keyboard skips T9 publish for it", () => {
+  let probes = 0;
+  let peeks = 0;
+  const engine = {
+    peek: () => { peeks++; return { context: { preedit: "ni" }, commit: null }; },
+    get asciiMode() { return false; },
+    processKey() { probes++; throw Error("Shift must not process Rime"); },
+    clearComposition() { probes++; throw Error("Shift must not clear Rime"); },
+    toggleAsciiMode() { probes++; throw Error("Shift must not change mode"); }
+  };
+  const { InputController } = load("core/input/InputController.ts", ["InputController"], {
+    KEY_BACKSPACE: 8, KEY_RETURN: 13, KEY_SPACE: 32
+  });
+  let state = { shifted: false, capsLocked: false, lastShiftTapAt: 0 };
+  let first = new InputController(engine).dispatch({ type: "toggleShift" }, state, 1000);
+  assert.equal(first.shifted, true);
+  assert.equal(first.capsLocked, false);
+  state = { shifted: first.shifted, capsLocked: first.capsLocked, lastShiftTapAt: first.lastShiftTapAt };
+  const second = new InputController(engine).dispatch({ type: "toggleShift" }, state, 1200);
+  assert.equal(second.capsLocked, true);
+  assert.equal(second.shifted, true);
+  assert.equal(probes, 0);
+  assert.equal(peeks, 2);
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  assert.match(root, /if \(!effect\.steps && command\.type !== "toggleShift"\) publish\(effect\.snapshot\);/);
+});
+
+test("grapheme segmenter is reused and produces unchanged character counts", () => {
+  let created = 0;
+  class SegmenterCounter {
+    constructor() { created++; this.impl = new Intl.Segmenter(undefined, { granularity: "grapheme" }); }
+    segment(text) { return this.impl.segment(text); }
+  }
+  const { backspaceUnitCount } = load("keyboard/edit/EditController.ts",
+    ["backspaceUnitCount"], { Intl: { Segmenter: SegmenterCounter } });
+  const inputs = ["", "hello", "A👨‍👩‍👧‍👦好", "🇸🇬", "e\u0301", "👍🏽👍🏽"];
+  for (const input of inputs) {
+    const oldValue = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(input)).length;
+    assert.equal(backspaceUnitCount(input), oldValue);
+  }
+  assert.equal(created, 1);
+  assert.equal(backspaceUnitCount("复合字符"), 4);
+  assert.equal(created, 1);
+});
+
+test("keyboard editor disposal releases large undo data and leaves host untouched", () => {
+  const calls = [];
+  const host = { insertText(value) { calls.push(value); } };
+  const { KeyboardEditController } = load("keyboard/edit/EditController.ts",
+    ["KeyboardEditController"], { CustomKeyboard: host });
+  const controller = new KeyboardEditController();
+  controller.rememberDeletedText("字".repeat(50000));
+  assert.equal(controller.deletedText.length, 50000);
+  controller.dispose();
+  assert.equal(controller.deletedText, "");
+  assert.equal(controller.snapshot, null);
+  assert.equal(controller.disposed, true);
+  controller.restoreDeleted();
+  controller.execute({ type: "deleteAll" });
+  assert.deepEqual(calls, []);
+});
+
+test("T9 publish reads runtime mode/schema once before Lua probe", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const start = source.indexOf("  function publish(snapshot:");
+  const end = source.indexOf("\n  function dispatch(", start);
+  const publish = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(publish, /const t9Active = Boolean\(engine && !engine\.asciiMode && engine\.isT9BridgeTargetSchema\(\)\);/);
+  assert.match(publish, /if \(t9Active && engine\) t9Options = engine\.queryT9PinyinOptions\(\);/);
+  assert.match(publish, /const visiblePreedit = t9Active/);
+  assert.equal((publish.match(/engine\.isT9BridgeTargetSchema\(\)/g) || []).length, 1);
+  // setAsciiMode still samples after the Lua probe, preserving existing sequence.
+  assert.match(publish, /if \(engine\) setAsciiMode\(engine\.asciiMode\)/);
+});
+
+test("keyboard metrics cache reuses geometry and invalidates on width/layout/skin changes", () => {
+  const { resolveKeyboardMetrics, createKeyboardMetricsResolver } =
+    load("layout/metrics.ts", ["resolveKeyboardMetrics", "createKeyboardMetricsResolver"]);
+  const layout = { keyboardBodyHeight: 220, topSurfaceHeight: 46, requestedHeight: 278 };
+  const geometry = {
+    t9LeftColumn: { min: 40, max: 200, fraction: 0.19 },
+    t9RightColumn: { min: 40, max: 90, fraction: 0.19 },
+    numericLeftColumn: { min: 35, max: 75, fraction: 0.17 },
+    numericRightColumn: { min: 35, max: 75, fraction: 0.17 }
+  };
+  const resolver = createKeyboardMetricsResolver();
+  const a = resolver(390, layout, geometry);
+  for (let i = 0; i < 100; i++) {
+    assert.equal(resolver(390, layout, geometry), a);
+  }
+  const rotated = resolver(760, layout, geometry);
+  assert.notEqual(rotated, a);
+  assert.deepEqual(JSON.parse(JSON.stringify(rotated)),
+    JSON.parse(JSON.stringify(resolveKeyboardMetrics(760, layout, geometry))));
+  const changedLayout = { ...layout, keyboardBodyHeight: 240 };
+  const changedSize = resolver(760, changedLayout, geometry);
+  assert.notEqual(changedSize, rotated);
+  assert.notEqual(changedSize.keyHeight, rotated.keyHeight);
+  const changedGeometry = {
+    ...geometry, t9LeftColumn: { ...geometry.t9LeftColumn, fraction: 0.27 }
+  };
+  const changedSkin = resolver(760, changedLayout, changedGeometry);
+  assert.notEqual(changedSkin, changedSize);
+  assert.notEqual(changedSkin.t9.leftWidth, changedSize.t9.leftWidth);
+  assert.equal(resolver(760, changedLayout, changedGeometry), changedSkin);
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  assert.match(source, /const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> \| null>\(null\);/);
+  assert.match(source, /metricsResolverRef\.current!\(width, props\.layout, skin\.geometry\)/);
+});
+
+test("keyface memo cache remains tied to semantic and mode changes, not candidate state", () => {
+  const view = fs.readFileSync(path.join(root, "keyboard/components/KeyView.tsx"), "utf8");
+  assert.match(view, /const face = useMemo\(\(\) => projectBaseKeyFace\(/);
+  assert.match(view, /\[definition, preferences, props\.shifted, props\.capsLocked, props\.asciiMode\]\)/);
+  assert.doesNotMatch(view, /\[candidate|highlightedIndex/);
+  assert.match(view, /const manualGesture = useMemo\(\(\) => \(\{/);
+});
+
+test("expanded grid reuses column and padded candidate arrays without changing hit layout", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/components/ExpandedCandidatePanel.tsx"), "utf8");
+  assert.match(source, /const columns = useMemo\(\(\) => Array\.from\([\s\S]*?\[cellWidth\]\)/);
+  assert.match(source, /const cells = useMemo\(\(\) => \{/);
+  assert.match(source, /while \(next\.length % COLUMN_COUNT !== 0\) next\.push\(null\)/);
+  assert.match(source, /\}, \[props\.candidates\]\)/);
+  assert.doesNotMatch(source, /<HStack/);
+  assert.match(source, /<LazyVGrid/);
+  assert.match(source, /spacing=\{0\}/);
+  assert.match(source, /contentShape="rect"/);
+});
+
+test("Haptics start/dispose races do not recreate players after keyboard unmount", async () => {
+  let releaseStart;
+  const stats = { constructed: 0, stopped: 0, disposed: 0, createdPlayers: 0, transient: 0 };
+  let owned;
+  class Engine {
+    static supportsHaptics = true;
+    constructor() { stats.constructed++; owned = this; }
+    startAsync() { return new Promise(resolve => { releaseStart = resolve; }); }
+    stop() { stats.stopped++; }
+    dispose() { stats.disposed++; }
+    makePlayer() { stats.createdPlayers++; return { start() {} }; }
+  }
+  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
+    { HapticEngine: Engine, Haptics: { supportsHaptics: true, transient() { stats.transient++; } },
+      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {} }
+  );
+  prepareKeyboardHaptics(true);
+  assert.equal(stats.constructed, 1);
+  disposeKeyboardHaptics();
+  assert.equal(stats.stopped, 1);
+  assert.equal(stats.disposed, 1);
+  releaseStart();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(stats.createdPlayers, 0);
+  owned.onStopped?.();
+  owned.onReset?.();
+  assert.equal(stats.constructed, 1);
+  playKeyboardHaptic(false);
+  assert.equal(stats.constructed, 1);
+});
+
+test("Haptics keeps only three reusable player objects during continuous typing", async () => {
+  const stats = { createdPlayers: 0, played: 0, constructed: 0, disposed: 0 };
+  class Engine {
+    static supportsHaptics = true;
+    constructor() { stats.constructed++; }
+    startAsync() { return Promise.resolve(); }
+    stop() {}
+    dispose() { stats.disposed++; }
+    makePlayer() {
+      stats.createdPlayers++;
+      return { start() { stats.played++; } };
+    }
+  }
+  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
+    { HapticEngine: Engine,
+      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
+      Haptics: { supportsHaptics: true, transient() {} } }
+  );
+  prepareKeyboardHaptics(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  for (let i = 0; i < 100; i++) playKeyboardHaptic(true);
+  assert.equal(stats.createdPlayers, 3);
+  assert.equal(stats.played, 100);
+  assert.equal(stats.constructed, 1);
+  disposeKeyboardHaptics();
+  assert.equal(stats.disposed, 1);
+});
+
+test("rejected native Haptics stop/dispose promises are settled after teardown", async () => {
+  const stats = { stop: 0, dispose: 0 };
+  class Engine {
+    static supportsHaptics = true;
+    startAsync() { return Promise.resolve(); }
+    stop() { stats.stop++; return Promise.reject(new Error("native engine stopped")); }
+    dispose() { stats.dispose++; return Promise.reject(new Error("native resource released")); }
+    makePlayer() { return { start() {} }; }
+  }
+  const { prepareKeyboardHaptics, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"],
+    { HapticEngine: Engine,
+      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
+      Haptics: { supportsHaptics: true, transient() {} } }
+  );
+  prepareKeyboardHaptics(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  disposeKeyboardHaptics();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(stats.stop, 1);
+  assert.equal(stats.dispose, 1);
+});
+
+test("async failure of fallback transient feedback is consumed without unhandled rejection", async () => {
+  const stats = { attempts: 0 };
+  const { playKeyboardHaptic, disposeKeyboardHaptics } = load(
+    "keyboard/feedback/haptics.ts",
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"],
+    { Haptics: { supportsHaptics: true,
+      transient() { stats.attempts++; return Promise.reject(new Error("transient unavailable")); }
+    } }
+  );
+  playKeyboardHaptic(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(stats.attempts, 1);
+  disposeKeyboardHaptics();
+});
+
+test("keyboard dismiss releases Core Haptics even when extension view stays mounted", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const start = source.indexOf("  function dismissKeyboard() {");
+  const end = source.indexOf("\n  function renderKey(", start);
+  const block = source.slice(start, end);
+  assert.ok(start > 0 && end > start);
+  assert.match(block, /CustomKeyboard\.dismiss\(\);[\s\S]*?disposeKeyboardHaptics\(\);/);
+  assert.match(source, /onDismissKeyboard=\{dismissKeyboard\}/);
+});
+
+function runtimeFixture(overrides = {}) {
+  const stats = { setup: 0, list: 0, sessions: 0, closed: 0 };
+  let cancelled = false;
+  let setupResolve;
+  class Session {
+    constructor() {
+      stats.sessions++;
+      if (overrides.cancelOnSession) cancelled = true;
+    }
+    get currentSchema() { return { id: "wanxiang" }; }
+    close() { stats.closed++; }
+  }
+  const Rime = {
+    isSetUp: !overrides.setupPending,
+    Session,
+    setup: () => {
+      stats.setup++;
+      return new Promise(resolve => { setupResolve = resolve; });
+    },
+    listSchemas: async () => { stats.list++; return [{ id: "wanxiang" }]; }
+  };
+  const { prepareKeyboardRimeRuntime, RimeRuntimeCancelled } =
+    load("keyboard/runtime/RimeRuntimeCoordinator.ts",
+      ["prepareKeyboardRimeRuntime", "RimeRuntimeCancelled"], {
+        Rime,
+        RimeEngine: class {
+          constructor(session) { this.session = session; }
+          get currentSchemaId() { return "wanxiang"; }
+          close() { this.session.close(); }
+        },
+        listRuntimeSupportedRimeSchemes: items => items,
+        resolveSchemaForChineseLayout: () => ({ id: "wanxiang", name: "万象" }),
+        describeSchemes: () => "wanxiang",
+        listInstalledRimeSchemes: async () => [],
+        prepareT9BridgeRuntime: async () => ({ ready: true, changed: false })
+      });
+  return {
+    stats, RimeRuntimeCancelled, prepareKeyboardRimeRuntime,
+    setCancelled: () => { cancelled = true; },
+    isCancelled: () => cancelled,
+    resolveSetup: () => { if (setupResolve) setupResolve(); }
+  };
+}
+
+test("late Rime setup completion after keyboard dismissal does not start schema or session", async () => {
+  const f = runtimeFixture({ setupPending: true });
+  const promise = f.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    isCancelled: f.isCancelled
+  });
+  assert.equal(f.stats.setup, 1);
+  f.setCancelled();
+  f.resolveSetup();
+  await assert.rejects(promise, err => err instanceof f.RimeRuntimeCancelled);
+  assert.equal(f.stats.list, 0);
+  assert.equal(f.stats.sessions, 0);
+  assert.equal(f.stats.closed, 0);
+});
+
+test("cancel during native session constructor releases newly allocated Rime session", async () => {
+  const f = runtimeFixture({ cancelOnSession: true });
+  await assert.rejects(f.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    isCancelled: f.isCancelled
+  }), err => err instanceof f.RimeRuntimeCancelled);
+  assert.equal(f.stats.sessions, 1);
+  assert.equal(f.stats.closed, 1);
+});
+
+test("normal Rime initialization still returns open session with identical schema", async () => {
+  const f = runtimeFixture();
+  const engine = await f.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang"
+  });
+  assert.equal(engine.currentSchemaId, "wanxiang");
+  assert.equal(f.stats.sessions, 1);
+  assert.equal(f.stats.closed, 0);
+  engine.close();
+  assert.equal(f.stats.closed, 1);
+});
+
+test("keyboard teardown invalidates native haptics lifecycle callbacks", async () => {
+  let live;
+  class Engine {
+    static supportsHaptics = true;
+    constructor() { live=this; }
+    startAsync() { return Promise.resolve(); }
+    stop() { return Promise.resolve(); }
+    dispose() { return Promise.resolve(); }
+    makePlayer() { return { start() {} }; }
+  }
+  const h = load("keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"], {
+      HapticEngine: Engine, HapticPattern: class {}, HapticEvent: class {},
+      HapticEventParameter: class {}, Haptics: { supportsHaptics: true, transient() {} }
+    });
+  h.prepareKeyboardHaptics(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(typeof live.onStopped, "function");
+  assert.equal(typeof live.onReset, "function");
+  h.disposeKeyboardHaptics();
+  assert.equal(live.onStopped, null);
+  assert.equal(live.onReset, null);
+});

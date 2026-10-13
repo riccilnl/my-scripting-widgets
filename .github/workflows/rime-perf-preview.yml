@@ -1,0 +1,93 @@
+name: Publish isolated Rime iPhone A-B previews
+
+on:
+  push:
+    branches:
+      - "perf/rime-0.3.45-preview"
+    paths:
+      - "scripts/rime输入法/**"
+      - ".github/workflows/rime-perf-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rime-perf-preview
+  cancel-in-progress: false
+
+jobs:
+  build-test-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout preview and frozen official baseline
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test runtime and packager
+        run: |
+          node --test scripts/rime输入法/tests/runtime.test.cjs
+          node --test scripts/update_links.test.js
+
+      - name: Create A-B packages from independent sources
+        run: python3 scripts/rime输入法/tests/create_perf_preview.py
+
+      - name: Check manifest, archives and reproducible SHA256
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, zipfile, hashlib
+          root = pathlib.Path(".git/perf-preview")
+          manifest = json.loads((root / "manifest.json").read_text())
+          assert manifest["release_head"] == "56125d2"
+          assert len(manifest["packages"]) == 2
+          assert len(manifest["changed_runtime_files"]) == 8
+          expected = {
+              "Rime-baseline-0.3.44.scripting": "74973e61df83577e16484b5c18cd85ecb181d8e38db2afd1bb8fcd2fc572cd1f",
+              "Rime-performance-0.3.45-preview.scripting": "1796de5adc2deb121f984b3291c9cc8299853cedaf4ce82da8027d40b20da02b",
+          }
+          for item in manifest["packages"]:
+              pkg = pathlib.Path(item["path"])
+              assert pkg.name in expected
+              assert hashlib.sha256(pkg.read_bytes()).hexdigest() == expected[pkg.name]
+              with zipfile.ZipFile(pkg) as archive:
+                  assert len(archive.namelist()) == 82
+                  assert not any(("/tests/" in x or "/docs/" in x) for x in archive.namelist())
+          print("TWO_PREVIEW_PACKAGES_VERIFIED")
+          PY
+
+      - name: Publish test packages to this branch only
+        run: |
+          set -eu
+          mkdir -p previews/rime-ab-20261013
+          cp .git/perf-preview/Rime-baseline-0.3.44.scripting previews/rime-ab-20261013/
+          cp .git/perf-preview/Rime-performance-0.3.45-preview.scripting previews/rime-ab-20261013/
+          (cd previews/rime-ab-20261013 &&
+            sha256sum Rime-baseline-0.3.44.scripting Rime-performance-0.3.45-preview.scripting > SHA256SUMS.txt)
+          cat > previews/rime-ab-20261013/README.md <<'EOF'
+          # Rime A/B test packages (NOT an official release)
+
+          - Baseline 0.3.44: Rime基线测试, from the verified release 56125d2.
+          - Performance 0.3.45-preview: Rime性能测试, unmerged performance changes.
+
+          The two independent Scripting project names do **not** isolate Rime
+          shared dictionaries, user databases, schema deployments or App Group data.
+          Do not run schema installation or dictionary updates during comparison.
+          Use one test keyboard at a time and retain the official Rime 0.3.44.
+
+          Compare typing, pinyin selections, candidate scrolling, expanded
+          grid taps, haptic responsiveness, launch and exit behavior.
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- previews/rime-ab-20261013
+          if ! git diff --cached --quiet; then
+            git commit -m "build(rime): publish isolated iPhone A-B packages"
+            git push origin HEAD:refs/heads/perf/rime-0.3.45-preview
+          fi

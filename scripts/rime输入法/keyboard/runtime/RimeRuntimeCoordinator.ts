@@ -11,34 +11,55 @@ import { prepareT9BridgeRuntime } from "../../core/rime/T9BridgeRuntime";
 export type RimeRuntimeRequest = {
   chineseLayout: ChineseLayoutId;
   preferredSchemaId: string;
+  /** True after the requesting keyboard view has been torn down. */
+  isCancelled?: () => boolean;
 };
 
+export class RimeRuntimeCancelled extends Error {
+  constructor() { super("Rime keyboard initialization cancelled"); }
+}
+
 async function buildRuntime(request: RimeRuntimeRequest): Promise<RimeEngine> {
+  const requireActive = () => {
+    if (request.isCancelled?.()) throw new RimeRuntimeCancelled();
+  };
+  requireActive();
   if (!Rime.isSetUp) await Rime.setup();
+  requireActive();
 
   let runtimeSchemas = await Rime.listSchemas();
+  requireActive();
   const { chineseLayout, preferredSchemaId } = request;
 
   if (preferredSchemaId && !runtimeSchemas.some((item: any) => item?.id === preferredSchemaId)) {
     const installed = await listInstalledRimeSchemes();
+    requireActive();
     if (installed.some((item) => item.id === preferredSchemaId) && typeof Rime.deploy === "function") {
       await Rime.deploy();
+      requireActive();
       runtimeSchemas = await Rime.listSchemas();
+      requireActive();
     }
   }
 
   if (chineseLayout === "t9") {
     const bridge = await prepareT9BridgeRuntime();
+    requireActive();
     if (!bridge.ready) throw new Error("wanxiang_t9 九键输入桥安装或注册失败");
-    if (bridge.changed) runtimeSchemas = await Rime.listSchemas();
+    if (bridge.changed) {
+      runtimeSchemas = await Rime.listSchemas();
+      requireActive();
+    }
   }
 
   // Rime.listSchemas() is already the runtime-selectable source of truth.
   // Avoid rescanning and parsing every installed .schema.yaml on each keyboard mount.
   const schemes = listRuntimeSupportedRimeSchemes(runtimeSchemas);
+  requireActive();
   const engine = new RimeEngine(new Rime.Session());
 
   try {
+    requireActive();
     const targetScheme = resolveSchemaForChineseLayout(
       schemes,
       engine.currentSchemaId,
@@ -68,6 +89,7 @@ async function buildRuntime(request: RimeRuntimeRequest): Promise<RimeEngine> {
       }
     }
 
+    requireActive();
     return engine;
   } catch (error) {
     engine.close();

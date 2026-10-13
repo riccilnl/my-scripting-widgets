@@ -70,7 +70,9 @@ export function KeyView(props: Props) {
   const touchHeight = props.touchHeight ?? height;
   const visualOffsetX = props.visualOffsetX ?? Math.max(0, (touchWidth - width) / 2);
   const visualOffsetY = props.visualOffsetY ?? Math.max(0, (touchHeight - height) / 2);
-  const face = projectBaseKeyFace(
+  // Candidate/highlight and unrelated root renders must not regenerate
+  // immutable key labels, icons, and text style projections.
+  const face = useMemo(() => projectBaseKeyFace(
     definition,
     {
       shifted: props.shifted === true,
@@ -78,7 +80,7 @@ export function KeyView(props: Props) {
       asciiMode: props.asciiMode === true
     },
     preferences
-  );
+  ), [definition, preferences, props.shifted, props.capsLocked, props.asciiMode]);
   const typography = skin.typography.keys[face.centerTextRole];
   const visualRole = skin.keyVisualRoleOverrides?.[definition.id] ?? definition.visualRole;
   const keyBackground = colors.keyBackgroundOverrides?.[definition.id] ?? colors.keyBackgrounds[visualRole];
