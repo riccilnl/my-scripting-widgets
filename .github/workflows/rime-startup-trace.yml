@@ -37,6 +37,10 @@ jobs:
         run: python3 -B scripts/rime输入法/tests/create_startup_diagnostic_preview.py
       - name: Verify every packaged source file
         run: python3 -B scripts/rime输入法/tests/verify_startup_diagnostic_preview.py
+      - name: Build matched Lazy-vs-plain startup A/B keyboards
+        run: |
+          python3 -B scripts/rime输入法/tests/create_lazy_ab_preview.py
+          python3 -B scripts/rime输入法/tests/verify_lazy_ab_preview.py
       - name: Commit diagnostic installation package only on preview branch
         run: |
           set -eu
@@ -79,9 +83,17 @@ jobs:
 
           Official main 0.3.52 and the earlier A/B packages are unchanged.
           EOF
+          # A/B packages are independently named snapshots, not a replacement
+          # for the stable preview's auto-update latest.zip.
+          mkdir -p previews/rime-lazy-ab-20261013
+          cp .git/perf-preview/Rime-startup-lazy-0.3.54.scripting previews/rime-lazy-ab-20261013/
+          cp .git/perf-preview/Rime-startup-plain-0.3.54.scripting previews/rime-lazy-ab-20261013/
+          (cd previews/rime-lazy-ab-20261013 &&
+            sha256sum Rime-startup-lazy-0.3.54.scripting Rime-startup-plain-0.3.54.scripting > SHA256SUMS.txt)
+          cp scripts/rime输入法/docs/LAZY_STARTUP_AB_2026-10-13.md previews/rime-lazy-ab-20261013/README.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- previews/rime-startup-20261013
+          git add -- previews/rime-startup-20261013 previews/rime-lazy-ab-20261013
           if ! git diff --cached --quiet; then
             git commit -m "build(rime): publish independent startup diagnostics preview"
             git push origin HEAD:refs/heads/perf/rime-startup-trace
