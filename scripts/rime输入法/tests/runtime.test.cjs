@@ -1034,3 +1034,38 @@ test("unready Rime-bound input is marked once without storing text or replaying 
   const lastIndex = source.indexOf("    const effect = controller.dispatch(command,");
   assert.ok(firstIndex >= 0 && firstIndex < lastIndex);
 });
+
+test("copied startup report includes all phases and accurate differences", () => {
+  const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
+  const report = { version: 1, recordedAt: 1780000000000, layout: "t9", outcome: "ready", marks: [
+    { phase: "ui.settings.begin", elapsedMs: 0 },
+    { phase: "rime.setup.begin", elapsedMs: 14.7 },
+    { phase: "rime.setup.end", elapsedMs: 80.2 },
+    { phase: "startup.ready", elapsedMs: 90.4 }
+  ] };
+  const output = formatStartupTraceReport(report);
+  assert.ok(output.includes("Rime 启动性能诊断报告"));
+  assert.ok(output.includes("布局：九键"));
+  assert.ok(output.includes("状态：可输入"));
+  assert.ok(output.includes("JS 启动阶段累计：90.4 ms"));
+  assert.ok(output.includes("rime.setup.end：累计 80.2 ms，本阶段 +65.5 ms"));
+  assert.equal(output.split("\n").filter(line => line.includes("：累计 ") && line.includes("本阶段 +")).length, 4);
+  assert.ok(output.includes("不含静态模块加载、系统键盘切换和屏幕首次绘制"));
+});
+test("startup report handles cancelled and failed sessions with zero phases", () => {
+  const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
+  const empty = { version: 1, recordedAt: 0, layout: "qwerty", outcome: "cancelled", marks: [] };
+  assert.ok(formatStartupTraceReport(empty).includes("状态：提前关闭"));
+  assert.ok(formatStartupTraceReport(empty).includes("JS 启动阶段累计：0 ms"));
+  assert.ok(formatStartupTraceReport({ ...empty, outcome: "error", marks: [
+    { phase: "startup.error", elapsedMs: 7.8 }
+  ] }).includes("本阶段 +7.8 ms"));
+});
+test("one-tap diagnostic copy reads latest persisted trace and awaits pasteboard", () => {
+  const source = fs.readFileSync(path.join(root, "ui/settings/StartupDiagnosticsPage.tsx"), "utf8");
+  assert.ok(source.includes('title="一键复制完整诊断报告"'));
+  assert.ok(source.includes("const latest = readLastStartupTrace();"));
+  assert.ok(source.includes("await Pasteboard.setString(formatStartupTraceReport(latest));"));
+  assert.ok(source.includes("复制失败"));
+  assert.ok(source.includes("没有可复制的启动记录"));
+});

@@ -1,4 +1,5 @@
 import { Button, HStack, List, Section, Text, Toggle, useState, VStack } from "scripting";
+import { formatStartupTraceReport } from "./formatStartupTraceReport";
 import {
   clearLastStartupTrace,
   isStartupTraceEnabled,
@@ -28,6 +29,22 @@ export function StartupDiagnosticsPage() {
     setNotice("");
   }
 
+  async function copyLatestReport() {
+    const latest = readLastStartupTrace();
+    if (!latest) {
+      setReport(null);
+      setNotice("没有可复制的启动记录；请先开启诊断并唤起键盘。");
+      return;
+    }
+    setReport(latest);
+    try {
+      await Pasteboard.setString(formatStartupTraceReport(latest));
+      setNotice("完整诊断报告已复制，直接粘贴到 ChatGPT 对话即可。");
+    } catch {
+      setNotice("复制失败，请检查 Scripting 剪贴板权限后重试。");
+    }
+  }
+
   function clear() {
     if (!clearLastStartupTrace()) {
       setNotice("清除记录失败。");
@@ -41,10 +58,11 @@ export function StartupDiagnosticsPage() {
     <List navigationTitle="启动性能诊断" navigationBarTitleDisplayMode="inline">
       <Section
         header={<Text>启动记录</Text>}
-        footer={<Text>诊断默认关闭。仅记录一次启动的阶段时间、布局和成功/取消/失败状态，不保存输入文本、候选内容或文件路径；开启后，每次启动最多写入一条记录。诊断本身可能增加少量开销。</Text>}
+        footer={<Text>诊断默认关闭。仅记录一次启动的阶段时间、布局和成功/取消/失败状态，不保存输入文本、候选内容或文件路径；开启后，每次启动最多写入一条记录。点击“一键复制完整诊断报告”，即可粘贴到 ChatGPT。诊断本身可能增加少量开销。</Text>}
       >
         <Toggle title="启用启动诊断" value={enabled} onChanged={toggle} />
         <Button title="刷新上次启动记录" action={refresh} />
+        <Button title="一键复制完整诊断报告" systemImage="doc.on.doc" action={() => { void copyLatestReport(); }} />
         {notice ? <Text foregroundStyle="secondaryLabel">{notice}</Text> : null}
       </Section>
       {report
