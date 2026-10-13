@@ -43,9 +43,18 @@ jobs:
           with zipfile.ZipFile('rime输入法.scripting') as archive:
               names = archive.namelist()
               for part in ('keyboard/components/CandidateBar.tsx',
-                           'keyboard/components/ExpandedCandidatePanel.tsx'):
+                           'keyboard/components/ExpandedCandidatePanel.tsx',
+                           'keyboard/components/AuxiliarySurfaceHost.tsx',
+                           'script.json'):
                   source = pathlib.Path('scripts/rime输入法') / part
                   assert archive.read('rime输入法/' + part) == source.read_bytes(), part
+              import json
+              manifest = json.loads(archive.read('rime输入法/script.json'))
+              assert manifest['author']['name'] == 'Ricci'
+              assert manifest['remoteResource'] == {
+                  'url': 'https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/rime%E8%BE%93%E5%85%A5%E6%B3%95.scripting',
+                  'autoUpdateInterval': 3600
+              }
               assert not any('/' + directory + '/' in name
                              for name in names for directory in ('docs', 'tests', '.cora', '.colameta'))
               assert any(name.endswith('/script.json') for name in names)

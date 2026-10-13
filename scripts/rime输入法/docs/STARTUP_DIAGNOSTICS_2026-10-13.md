@@ -80,3 +80,12 @@
 - 经用户明确授权，将已验证的性能改动与启动诊断功能从预览分支移入正式 main；正式脚本版本升至 0.3.49，名称仍为 `rime输入法`。
 - 诊断默认关闭，开启后仅保留最后一次启动报告；不记录输入内容或候选词，正式脚本的 `remoteResource` 保持 null。
 - 预览独立打包脚本和预览安装包不并入正式主线。正式安装包继续由 main 的 `Build Scripting Rime` 工作流生成，须确认 Actions 发布提交和安装包版本。
+
+## 正式版 0.3.52：双面板滚动与正式自动更新（2026-10-13）
+
+- 用户已在 iPhone 真机确认 Rime启动诊断测试 预览 0.3.51 的剪贴板与常用语滑动修复验收通过；验收来自用户确认，非 Node 模拟测试。
+- 将预览中 AuxiliarySurfaceHost.tsx 的滚动命中形状修复及第 48 条结构回归测试，精准合入正式 main；保留视觉间距、插入、分类、左滑删除及独立预览分支。
+- 正式 script.json 版本从 0.3.49 升至 0.3.52（高于预览 0.3.51）；名称 rime输入法、作者 Ricci 保持，启动诊断功能默认关闭。
+- 按用户此前明确提出的自动更新要求，为正式版设置 remoteResource.url 为 GitHub main 的固定可变安装包地址 https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/rime%E8%BE%93%E5%85%A5%E6%B3%95.scripting，autoUpdateInterval 为 3600 秒。检查间隔不是 iOS 后台准确运行时间。
+- 这是首次将正式版 remoteResource 从 null 改为非空：已安装旧版设备可能需从固定链接重新安装一次以取得订阅元数据；Scripting 安装器也可能替换实际跟踪 URL。CI 通过不等于手机已自动更新，须以手机实际 script.json 及后续更新行为验证。
+- CI Build Scripting Rime 生成正式 rime输入法.scripting；必须确认产物包内版本、作者、订阅 URL、滚动源码与主线一致。

@@ -8,9 +8,12 @@
     "email": null
   },
   "description": "Aligns Wanxiang Lite/T9 updates with the proven Wanxiang assistant flow: tracked old-file cleanup, overwrite-safe install, and Scripting deploy with fullCheck=false.",
-  "remoteResource": null,
+  "remoteResource": {
+    "url": "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/rime%E8%BE%93%E5%85%A5%E6%B3%95.scripting",
+    "autoUpdateInterval": 3600
+  },
   "color": "rgba(0, 0, 0, 1)",
-  "version": "0.3.49",
+  "version": "0.3.52",
   "localizedDescriptions": {
     "en": "A clean-architecture custom keyboard powered by Rime.",
     "zh": "全新架构的 Rime 自定义键盘。"

@@ -25,6 +25,9 @@ import {
 
 export type AuxiliarySurfaceId = "clipboard" | "commonPhrases";
 
+// Invisible hit surface: scroll gestures also start from visual spacing.
+const HIT_SURFACE = "rgba(0,0,0,0.001)";
+
 function ClipboardSwipeRow(props: {
   text: string;
   width: number;
@@ -52,7 +55,7 @@ function ClipboardSwipeRow(props: {
       background={"rgba(255,59,48,1)" as any}
       clipShape={{ type: "rect", cornerRadius: props.cornerRadius } as any}
       contentShape="rect"
-      gesture={DragGesture({ minDistance: 28, coordinateSpace: "local" })
+      simultaneousGesture={DragGesture({ minDistance: 28, coordinateSpace: "local" })
         .onChanged((details: any) => {
           const dx = Number(details?.translation?.width ?? 0);
           const dy = Number(details?.translation?.height ?? 0);
@@ -218,24 +221,40 @@ export function AuxiliarySurfaceHost(props: {
         )}
         {clipboardItems.length > 0
           ? (
-            <ScrollView axes="vertical" scrollIndicator="visible" frame={{ width: props.width, height: bodyHeight }}>
+            <ScrollView
+              axes="vertical"
+              scrollIndicator="visible"
+              frame={{ width: props.width, height: bodyHeight }}
+              background={HIT_SURFACE as any}
+              contentShape="rect"
+            >
               <VStack
-                spacing={2}
+                spacing={0}
                 padding={{ horizontal: horizontalInset, top: 4, bottom: 10 }}
                 frame={{ width: props.width, alignment: "top" as any }}
+                background={HIT_SURFACE as any}
+                contentShape="rect"
               >
                 {clipboardItems.map((text, index) => (
-                  <ClipboardSwipeRow
-                    key={`clipboard-${index}-${text}`}
-                    text={text}
-                    width={rowWidth}
-                    fontSize={props.skin.typography.contentPanel.row.fontSize}
-                    foreground={props.colors.foreground}
-                    background={props.colors.keyBackgrounds.system}
-                    cornerRadius={props.skin.visuals.keyCornerRadius}
-                    onSelect={() => selectClipboard(text)}
-                    onDelete={() => deleteClipboard(text)}
-                  />
+                  <VStack
+                    key={index + "-" + text}
+                    spacing={0}
+                    padding={{ bottom: index < clipboardItems.length - 1 ? 2 : 0 }}
+                    frame={{ width: rowWidth }}
+                    background={HIT_SURFACE as any}
+                    contentShape="rect"
+                  >
+                    <ClipboardSwipeRow
+                      text={text}
+                      width={rowWidth}
+                      fontSize={props.skin.typography.contentPanel.row.fontSize}
+                      foreground={props.colors.foreground}
+                      background={props.colors.keyBackgrounds.system}
+                      cornerRadius={props.skin.visuals.keyCornerRadius}
+                      onSelect={() => selectClipboard(text)}
+                      onDelete={() => deleteClipboard(text)}
+                    />
+                  </VStack>
                 ))}
               </VStack>
             </ScrollView>
@@ -269,25 +288,39 @@ export function AuxiliarySurfaceHost(props: {
       {categories.length > 0
         ? (
           <HStack spacing={0} frame={{ width: props.width, height: bodyHeight, alignment: "top" as any }}>
-            <ScrollView axes="vertical" scrollIndicator="hidden" frame={{ width: navigationWidth, height: bodyHeight }}>
-              <VStack spacing={1} padding={{ top: 6, bottom: 10 }} frame={{ width: navigationWidth, alignment: "top" as any }}>
+            <ScrollView
+              axes="vertical"
+              scrollIndicator="hidden"
+              frame={{ width: navigationWidth, height: bodyHeight }}
+              background={HIT_SURFACE as any}
+              contentShape="rect"
+            >
+              <VStack
+                spacing={0}
+                padding={{ top: 6, bottom: 10 }}
+                frame={{ width: navigationWidth, alignment: "top" as any }}
+                background={HIT_SURFACE as any}
+                contentShape="rect"
+              >
                 {categories.map((category) => {
                   const selected = category.id === effectiveSelectedCategoryId;
                   return (
                     <ZStack
                       key={`common-phrase-nav-${category.id}`}
-                      frame={{ width: hitTargetSize, height: hitTargetSize }}
-                      background={"rgba(0,0,0,0.001)" as any}
+                      frame={{ width: navigationWidth, height: hitTargetSize + 1, alignment: "leading" as any }}
+                      background={HIT_SURFACE as any}
                       contentShape="rect"
                       onTapGesture={() => setSelectedCategoryId(category.id)}
                     >
-                      <ZStack
-                        frame={{ width: 38, height: 38 }}
-                        foregroundStyle={(selected ? props.colors.foreground : props.colors.secondaryForeground) as any}
-                        background={(selected ? props.colors.keyBackgrounds.system : "rgba(0,0,0,0)") as any}
-                        clipShape={{ type: "rect", cornerRadius: props.skin.visuals.keyCornerRadius } as any}
-                      >
-                        <Image systemName={category.symbol} font={18} />
+                      <ZStack frame={{ width: hitTargetSize, height: hitTargetSize }}>
+                        <ZStack
+                          frame={{ width: 38, height: 38 }}
+                          foregroundStyle={(selected ? props.colors.foreground : props.colors.secondaryForeground) as any}
+                          background={(selected ? props.colors.keyBackgrounds.system : "rgba(0,0,0,0)") as any}
+                          clipShape={{ type: "rect", cornerRadius: props.skin.visuals.keyCornerRadius } as any}
+                        >
+                          <Image systemName={category.symbol} font={18} />
+                        </ZStack>
                       </ZStack>
                     </ZStack>
                   );
@@ -308,18 +341,25 @@ export function AuxiliarySurfaceHost(props: {
                 anchor: "top"
               }}
               frame={{ width: contentWidth, height: bodyHeight }}
+              background={HIT_SURFACE as any}
+              contentShape="rect"
             >
               <VStack
-                spacing={12}
+                spacing={0}
                 padding={{ horizontal: 10, top: 6, bottom: 12 }}
                 frame={{ width: contentWidth, alignment: "top" as any }}
+                background={HIT_SURFACE as any}
+                contentShape="rect"
                 scrollTargetLayout
               >
                 {categories.map((category, categoryIndex) => (
                   <VStack
                     key={category.id}
-                    spacing={6}
+                    spacing={0}
+                    padding={{ bottom: categoryIndex < categories.length - 1 ? 12 : 0 }}
                     frame={{ width: Math.max(0, contentWidth - 20), alignment: "top" as any }}
+                    background={HIT_SURFACE as any}
+                    contentShape="rect"
                   >
                     <Text
                       font={props.skin.typography.contentPanel.sectionTitle.fontSize}
@@ -329,21 +369,29 @@ export function AuxiliarySurfaceHost(props: {
                     >
                       {category.title.trim() || `分类 ${categoryIndex + 1}`}
                     </Text>
-                    {category.phrases.map((phrase) => (
-                      <Text
+                    {category.phrases.map((phrase, phraseIndex) => (
+                      <VStack
                         key={phrase.id}
-                        font={props.skin.typography.contentPanel.row.fontSize}
-                        lineLimit={3}
-                        foregroundStyle={props.colors.foreground as any}
-                        padding={{ horizontal: 10, vertical: 7 }}
-                        frame={{ width: Math.max(0, contentWidth - 20), minHeight: 38, alignment: "leading" as any }}
-                        background={props.colors.keyBackgrounds.normal as any}
-                        clipShape={{ type: "rect", cornerRadius: props.skin.visuals.keyCornerRadius } as any}
+                        spacing={0}
+                        padding={{ bottom: phraseIndex < category.phrases.length - 1 ? 6 : 0 }}
+                        frame={{ width: Math.max(0, contentWidth - 20) }}
+                        background={HIT_SURFACE as any}
                         contentShape="rect"
-                        onTapGesture={() => selectPhrase(phrase.text)}
                       >
-                        {phrase.text}
-                      </Text>
+                        <Text
+                          font={props.skin.typography.contentPanel.row.fontSize}
+                          lineLimit={3}
+                          foregroundStyle={props.colors.foreground as any}
+                          padding={{ horizontal: 10, vertical: 7 }}
+                          frame={{ width: Math.max(0, contentWidth - 20), minHeight: 38, alignment: "leading" as any }}
+                          background={props.colors.keyBackgrounds.normal as any}
+                          clipShape={{ type: "rect", cornerRadius: props.skin.visuals.keyCornerRadius } as any}
+                          contentShape="rect"
+                          onTapGesture={() => selectPhrase(phrase.text)}
+                        >
+                          {phrase.text}
+                        </Text>
+                      </VStack>
                     ))}
                   </VStack>
                 ))}
