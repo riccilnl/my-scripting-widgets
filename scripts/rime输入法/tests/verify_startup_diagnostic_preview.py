@@ -14,7 +14,7 @@ def verify():
     target = OUT / FILENAME
     source = source_files()
     assert Path(info["path"]) == target
-    assert info["project_name"] == PROJECT and info["version"] == "0.3.48"
+    assert info["project_name"] == PROJECT and info["version"] == "0.3.50"
     # Auto-update MUST fetch the mutable test branch, never an immutable Git SHA.
     assert REMOTE_ARCHIVE_URL.endswith("/" + REMOTE_ARCHIVE_NAME)
     assert "/refs/heads/perf/rime-startup-trace/" in REMOTE_ARCHIVE_URL
@@ -42,12 +42,14 @@ def verify():
             if relative == "script.json":
                 data = json.loads(actual)
                 baseline = json.loads(expected)
-                assert data["name"] == PROJECT and data["version"] == "0.3.48"
+                assert data["name"] == PROJECT and data["version"] == "0.3.50"
                 assert data["remoteResource"] == {
                     "url": REMOTE_ARCHIVE_URL,
                     "autoUpdateInterval": AUTO_UPDATE_INTERVAL
                 }
                 assert baseline.get("remoteResource") is None
+                assert data["author"]["name"] == "Ricci"
+                baseline["author"]["name"] = "Ricci"
                 assert data["localizedNames"]["en"] == "Rime Startup Diagnostics Test"
                 assert data["entry"] == baseline["entry"]
                 for key in ("name", "version", "localizedNames", "remoteResource"):
