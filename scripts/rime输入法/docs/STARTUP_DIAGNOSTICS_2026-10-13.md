@@ -82,3 +82,28 @@
 - 保留：点击插入、分类切换与滚动定位、左滑删除、历史清空、性能诊断及其默认关闭状态。
 - 测试：Node 回归、源码结构契约、包内逐文件一致性；iPhone 真机须从内容行、行间、分类间及两侧留白纵向滑动，并测试水平左滑删除、点击插入、分类定位。
 - 仅预览分支，正式 main 不变；CI 同时更新 latest.zip 与 0.3.46 固定别名订阅，预览版本 0.3.51。
+
+## 0.3.53 Preview — 冷启动归因第二阶段（2026-10-13）
+
+### 真机数据基线
+
+- 用户提交正式 0.3.52 九键热启动：JS 88 ms；UI present.return→effect.begin 73 ms，Rime Session 2 ms，schema 0 ms。
+- 用户提交正式 0.3.52 九键首次冷启动：JS 391 ms；Effect 等待 117 ms，Rime.setup 15 ms，Rime.listSchemas 72 ms，Session 包围区间 165 ms。单次样本不能推出稳定的 P50/P95，更不能把 JS 时间当成屏幕首帧时间。
+- 已验证源码：new RimeEngine(new Rime.Session()) 中 RimeEngine 构造只保存原生引用，165 ms 主要落在 Rime.Session() 同步构造路径，但不能进一步推断原生内部的字典加载、内存分配、文件 I/O 各花费多少。
+- Scripting 官方文档确认 Rime 是进程级引擎，Rime.setup() 一次初始化，Rime.Session 每次输入会话创建，用完应 close；Rime.isDeploying 仅表示观察瞬间的部署状态，不证明是哪项操作导致构造缓慢。参考：https://scriptingapp.github.io/zh/guide/Rime
+
+### 诊断增强与边界
+
+- 在不改变初始化顺序的情况下新增 rime.session.native.begin/end、rime.session.wrap.begin/end，旧 rime.session.begin/end 保留以便与历史报告直接比较。前者包括 JS→原生桥接开销，不能当作 librime 内部计时。
+- 在 Rime schema 枚举前及 Session 构造前，各读取一次官方 Rime.isDeploying 同步状态，记录枚举或构造前的 busy/idle 常量事件。仅诊断开启时读取；无日志轮询。
+- 复制报告增加初始化路径、瞬时部署状态以及关键耗时区间摘要；仍为报告格式 1，保持原全部时间事件，不泄漏输入、候选、schema ID、路径。
+- 不修改 Rime.setup、listSchemas、Session 创建顺序、不复用/后台预热 Session；关闭诊断时不增加额外 Rime 状态读取、不会追加持久化写入。最近一次启动覆盖写入，最大 48 事件约束不变。
+- 本轮只发布独立 Rime启动诊断测试 0.3.53 预览，正式 main 0.3.52 不变，继续覆盖 latest.zip 与手机旧 0.3.46 订阅兼容别名。
+
+### 下一轮 iPhone 验收
+
+1. 更新预览键盘至 0.3.53，在诊断设置里确认开关开启。
+2. 连续热启动至少 5 次，分别复制每次结果，重点观察原生 Session 构造区间与 UI Effect 间隔。
+3. 再测试至少 5 次真实引擎未初始化情形；以 rime.setup.begin 是否出现判断本轮是否执行 setup，不要用关闭再打开键盘直接断定系统进程已冷启动。必要时手动结束相关 App/扩展后测试，仍应以事件为准。
+4. 对比 rime.deployStatus.beforeSchemas / beforeSession 和原生构造耗时；如果多次冷启动都约 150–200 ms 且部署 idle，下一步需要 Scripting 提供的原生性能工具/实现源码才能细分 librime 内部瓶颈，不应继续在 JS 层堆补丁。
+5. 每次记录只保存最近一次；请连续复制多个报告，不要期望诊断开关后台自动积累十次记录。

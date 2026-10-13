@@ -764,7 +764,7 @@ test("keyboard dismiss releases Core Haptics even when extension view stays moun
 });
 
 function runtimeFixture(overrides = {}) {
-  const stats = { setup: 0, list: 0, sessions: 0, closed: 0 };
+  const stats = { setup: 0, list: 0, sessions: 0, closed: 0, deploymentReads: 0 };
   let cancelled = false;
   let setupResolve;
   class Session {
@@ -777,6 +777,10 @@ function runtimeFixture(overrides = {}) {
   }
   const Rime = {
     isSetUp: !overrides.setupPending,
+    get isDeploying() {
+      stats.deploymentReads++;
+      return Boolean(overrides.isDeploying);
+    },
     Session,
     setup: () => {
       stats.setup++;
@@ -980,6 +984,41 @@ test("startup view diagnostics remain decoupled from production UI and avoid fir
     /trace\?\.mark\("t9\.fastpath"\)/);
 });
 
+test("native session timing is isolated from wrapper and records deployment status only when enabled", async () => {
+  const events = [];
+  const tracing = runtimeFixture({ isDeploying: true });
+  const withTrace = await tracing.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    startupTrace: { mark: name => events.push(name) }
+  });
+  withTrace.close();
+  const stages = [
+    "rime.deployStatus.beforeSchemas.busy",
+    "rime.schemas.begin",
+    "rime.schemas.end",
+    "rime.deployStatus.beforeSession.busy",
+    "rime.session.begin",
+    "rime.session.native.begin",
+    "rime.session.native.end",
+    "rime.session.wrap.begin",
+    "rime.session.wrap.end",
+    "rime.session.end",
+    "rime.schemaSelection.begin",
+    "rime.runtimeReady"
+  ];
+  assert.deepEqual(events.filter(name => stages.includes(name)), stages);
+  assert.equal(tracing.stats.sessions, 1);
+  assert.equal(tracing.stats.closed, 1);
+  assert.equal(tracing.stats.deploymentReads, 2);
+  const withoutTrace = runtimeFixture();
+  const normal = await withoutTrace.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang"
+  });
+  normal.close();
+  assert.equal(withoutTrace.stats.sessions, 1);
+  assert.equal(withoutTrace.stats.deploymentReads, 0);
+});
+
 test("warm Rime startup stages exclude setup and T9, cold startup includes setup", async () => {
   const phases = [];
   const warm = runtimeFixture();
@@ -1052,6 +1091,34 @@ test("copied startup report includes all phases and accurate differences", () =>
   assert.equal(output.split("\n").filter(line => line.includes("：累计 ") && line.includes("本阶段 +")).length, 4);
   assert.ok(output.includes("不含静态模块加载、系统键盘切换和屏幕首次绘制"));
 });
+test("cold-start report separates native Session constructor, JS wrapping, and deployment snapshot", () => {
+  const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
+  const report = { version: 1, recordedAt: 1780000000000, layout: "t9", outcome: "ready", marks: [
+    { phase: "ui.present.return", elapsedMs: 5 },
+    { phase: "ui.effect.begin", elapsedMs: 122 },
+    { phase: "rime.setup.begin", elapsedMs: 125 },
+    { phase: "rime.setup.end", elapsedMs: 140 },
+    { phase: "rime.deployStatus.beforeSchemas.idle", elapsedMs: 140 },
+    { phase: "rime.schemas.begin", elapsedMs: 140 },
+    { phase: "rime.schemas.end", elapsedMs: 212 },
+    { phase: "rime.deployStatus.beforeSession.busy", elapsedMs: 213 },
+    { phase: "rime.session.native.begin", elapsedMs: 218 },
+    { phase: "rime.session.native.end", elapsedMs: 383 },
+    { phase: "rime.session.wrap.begin", elapsedMs: 383 },
+    { phase: "rime.session.wrap.end", elapsedMs: 384 },
+    { phase: "startup.ready", elapsedMs: 389 }
+  ] };
+  const output = formatStartupTraceReport(report);
+  assert.ok(output.includes("初始化路径：本次执行 Rime.setup"));
+  assert.ok(output.includes("这不等同于判断 iOS 进程是否冷启动"));
+  assert.ok(output.includes("部署状态采样：枚举前 未部署；Session 前 忙碌"));
+  assert.ok(output.includes("Effect 调度等待 117 ms"));
+  assert.ok(output.includes("Schema 枚举 72 ms"));
+  assert.ok(output.includes("Session 构造调用（含 JS/原生桥接） 165 ms"));
+  assert.ok(output.includes("Session JS 包装 1 ms"));
+  assert.ok(!output.includes("wanxiang") && !output.includes("候选词："));
+});
+
 test("startup report handles cancelled and failed sessions with zero phases", () => {
   const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
   const empty = { version: 1, recordedAt: 0, layout: "qwerty", outcome: "cancelled", marks: [] };
