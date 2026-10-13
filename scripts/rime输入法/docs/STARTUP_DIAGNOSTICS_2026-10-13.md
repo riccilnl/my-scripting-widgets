@@ -65,3 +65,11 @@
 - 增设兼容更新别名：每次测试分支发布，同时覆盖 Rime-startup-trace-latest.zip 和原始 Rime-startup-trace-0.3.46-preview.scripting，校验二者字节一致；旧版本文件名现作为专用可变兼容入口，而非冻结快照。
 - 以后每次测试发布都必须更新两个路径；其他带版本号的资源仍保持冻结快照，不再推荐作为自动更新订阅地址。
 - 更新是否成功必须在手机实际检查更新后重新读取本地 script.json 验证；CI 成功不能代替手机更新状态。
+
+## 0.3.48 Preview · 启动时间归因细化
+
+- 新增 ui.root.render.begin / ui.root.hooksReady，辅助定位 present.return 到 effect.begin 的未归因间隔。注意首次 render 与 effect 之间仍包含调度等待，不代表纯 CPU 耗时。
+- 新增 rime.schemaFilter.begin/end，区分原生 listSchemas 与 JS schema 筛选；不缓存 schema，不改变 Rime 行为。
+- 保留单次诊断、默认关闭、最多 48 个事件、无逐键写盘。
+- 诊断版提升至 0.3.48，继续覆盖 latest.zip 与手机已固定的 0.3.46 兼容订阅入口；正式 0.3.44 不变。
+- 本次仍无法直接测量 iOS 扩展启动、首帧或内存回落；需手机实测。

@@ -33,8 +33,10 @@ Scripting App 小组件集合
 
 ## Rime 输入法：戴尔 → GitHub → iPhone
 
+**协作及 Git 发布说明：** 新对话先读仓库根目录 `AGENTS.md` 和 `scripts/rime输入法/docs/GIT_WORKFLOW.md`。戴尔的 `git fetch/ls-remote` 已验收；普通 `git push` 因本机 HTTPS 认证缺失而失败，历史发布使用**已连接 GitHub 插件写入远端**再由 Cora 对齐本地，禁止将二者混为一谈。
+
 - 唯一开发目录：戴尔 ~/Work/scripting/scripts/rime输入法；Git 根目录：~/Work/scripting。
-- 在戴尔完成测试后，仅暂存 Rime 项目范围的文件并提交 main。
+- 在戴尔完成测试后，仅暂存明确的项目文件，提交到本次获准的目标分支；预览开发不得直接提交 main。
 - GitHub Actions Build Scripting Rime 在 Rime 源码及打包工具变化后测试、生成根目录 rime输入法.scripting 并提交安装包。
 - 手机使用下方快速安装中的 rime输入法.scripting 链接在 Scripting 中更新，不依赖戴尔到手机的文件同步。
 - 安装包排除 tests/、docs/、.cora/ 等开发目录。

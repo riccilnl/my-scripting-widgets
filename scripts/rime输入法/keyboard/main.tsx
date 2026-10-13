@@ -97,6 +97,11 @@ function KeyboardRoot(props: {
   skin: KeyboardSkin;
   startupTrace: StartupTrace | null;
 }) {
+  const startupRenderMarked = useRef<"new" | "started" | "done">("new");
+  if (startupRenderMarked.current === "new") {
+    startupRenderMarked.current = "started";
+    props.startupTrace?.mark("ui.root.render.begin");
+  }
   const skin = props.skin;
   const colorScheme = useColorScheme();
   const effectiveScheme = resolveEffectiveColorScheme(colorScheme === "dark" ? "dark" : "light");
@@ -156,6 +161,10 @@ function KeyboardRoot(props: {
   const expandedLoadLimitRef = useRef(EXPANDED_CANDIDATE_BATCH);
   const expandedLoadTriggerCountRef = useRef(-1);
 
+  if (startupRenderMarked.current === "started") {
+    props.startupTrace?.mark("ui.root.hooksReady");
+    startupRenderMarked.current = "done";
+  }
   useEffect(() => {
     let disposed = false;
     const startupTrace = props.startupTrace;

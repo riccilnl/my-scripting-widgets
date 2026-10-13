@@ -75,7 +75,9 @@ async function buildRuntime(request: RimeRuntimeRequest): Promise<RimeEngine> {
 
   // Rime.listSchemas() is already the runtime-selectable source of truth.
   // Avoid rescanning and parsing every installed .schema.yaml on each keyboard mount.
+  trace?.mark("rime.schemaFilter.begin");
   const schemes = listRuntimeSupportedRimeSchemes(runtimeSchemas);
+  trace?.mark("rime.schemaFilter.end");
   requireActive();
   trace?.mark("rime.session.begin");
   const engine = new RimeEngine(new Rime.Session());
