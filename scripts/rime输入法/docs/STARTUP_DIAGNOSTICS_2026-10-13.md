@@ -57,3 +57,11 @@
 - 通过 Scripting MCP 精确编辑手机现有 script.json 的 remoteResource.url 为 latest.zip；保留 hash、3600 秒间隔和 0.3.46 版本。重新读取验证成功，scripting_validate 零错误。
 - 本次尚须手机端主动检查更新后再读实际版本，不能在服务器构建成功时就推断手机更新成功。remoteResource.hash 算法未证实，不擅自清除。
 - 不改变正式 0.3.44、原有键盘、词库或触摸行为。
+
+## 2026-10-13 第二次真机核验：更新源 URL 被手机恢复
+
+- Scripting MCP 再次实测：手机 0.3.46 的 remoteResource.url 从手动修正后的 latest.zip **恢复**为旧的 Rime-startup-trace-0.3.46-preview.scripting。因此编辑手机 script.json 不能保证更新管理器持续使用新地址。
+- 未证实恢复机制来自 Scripting 更新缓存、安装元数据或文件自动同步；但旧文件仍是旧版本足以解释“最新版”的结果。
+- 增设兼容更新别名：每次测试分支发布，同时覆盖 Rime-startup-trace-latest.zip 和原始 Rime-startup-trace-0.3.46-preview.scripting，校验二者字节一致；旧版本文件名现作为专用可变兼容入口，而非冻结快照。
+- 以后每次测试发布都必须更新两个路径；其他带版本号的资源仍保持冻结快照，不再推荐作为自动更新订阅地址。
+- 更新是否成功必须在手机实际检查更新后重新读取本地 script.json 验证；CI 成功不能代替手机更新状态。
