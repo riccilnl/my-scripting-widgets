@@ -190,3 +190,9 @@
 - 打包器 **6/6 PASS**；未发现新增 TypeScript/TSX 类型诊断；`git diff --check` PASS。
 - 下一步由用户使用 GitHub 测试分支获取测试包后，才能执行 iPhone 真机 A/B；当前没有可核实的 iPhone CPU、RSS、电量或输入延迟数据。
 - 保持 GitHub main、正式 0.3.44 安装包及手机版本不变，待手机确认再决定正式发布。
+
+### GitHub A/B 测试流水线故障经验（2026-10-13）
+
+- 第一次 GitHub Actions 运行 `38353471381` 时，37/37 Rime 测试、6/6 打包测试与两份 ZIP 生成均 PASS，但强制比较 GitHub Ubuntu Runner 与 Fedora 的 ZIP SHA256 导致失败。两个环境生成相同 82 个条目，ZIP 压缩结果分别不同（zlib/Python 实现或版本差异），故不应跨系统要求压缩字节相同。
+- 修正为 `tests/verify_perf_preview.py`：逐一验证 82 个 ZIP 条目的解压内容与冻结 `56125d2`/当前测试源码精确相同、候选触摸/T9 桥无额外变化、manifest 仅有显式名称和预览版本差异；最终以 GitHub Runner 生成并发布的安装包实际 SHA256 作为下载校验值。
+- 这项校验不放松安装内容审计：即使 ZIP 字节不同，也必须对每一个解压文件进行内容等价验证。

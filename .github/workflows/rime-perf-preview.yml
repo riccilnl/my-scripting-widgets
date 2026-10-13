@@ -39,28 +39,8 @@ jobs:
       - name: Create A-B packages from independent sources
         run: python3 scripts/rime输入法/tests/create_perf_preview.py
 
-      - name: Check manifest, archives and reproducible SHA256
-        run: |
-          python3 - <<'PY'
-          import json, pathlib, zipfile, hashlib
-          root = pathlib.Path(".git/perf-preview")
-          manifest = json.loads((root / "manifest.json").read_text())
-          assert manifest["release_head"] == "56125d2"
-          assert len(manifest["packages"]) == 2
-          assert len(manifest["changed_runtime_files"]) == 8
-          expected = {
-              "Rime-baseline-0.3.44.scripting": "74973e61df83577e16484b5c18cd85ecb181d8e38db2afd1bb8fcd2fc572cd1f",
-              "Rime-performance-0.3.45-preview.scripting": "1796de5adc2deb121f984b3291c9cc8299853cedaf4ce82da8027d40b20da02b",
-          }
-          for item in manifest["packages"]:
-              pkg = pathlib.Path(item["path"])
-              assert pkg.name in expected
-              assert hashlib.sha256(pkg.read_bytes()).hexdigest() == expected[pkg.name]
-              with zipfile.ZipFile(pkg) as archive:
-                  assert len(archive.namelist()) == 82
-                  assert not any(("/tests/" in x or "/docs/" in x) for x in archive.namelist())
-          print("TWO_PREVIEW_PACKAGES_VERIFIED")
-          PY
+      - name: Verify extracted archive entries against frozen Git source
+        run: python3 -B scripts/rime输入法/tests/verify_perf_preview.py
 
       - name: Publish test packages to this branch only
         run: |
