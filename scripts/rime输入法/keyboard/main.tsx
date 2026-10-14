@@ -36,7 +36,8 @@ import { CandidateViewStore } from "./runtime/CandidateViewStore";
 import { AuxiliarySurfaceHost, type AuxiliarySurfaceId } from "./components/AuxiliarySurfaceHost";
 import { ExpandedCandidatePanel } from "./components/ExpandedCandidatePanel";
 import { KeyView } from "./components/KeyView";
-import { T9PinyinColumn } from "./components/T9PinyinColumn";
+import { T9PinyinColumnSubscriber } from "./components/T9PinyinColumnSubscriber";
+import { T9PinyinViewStore } from "./runtime/T9PinyinViewStore";
 import { displayedPreeditCursor } from "./preedit/displayedPreeditCursor";
 import { t9DisplayedPreedit } from "./preedit/t9DisplayedPreedit";
 import { disposeKeyboardHaptics, playKeyboardHaptic } from "./feedback/haptics";
@@ -60,10 +61,6 @@ import {
 
 const EXPANDED_CANDIDATE_BATCH = 96;
 const EDIT_EFFECTS = { clipboardText: recordClipboardText } as const;
-
-function sameStringList(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
 
 function keyboardBackgroundStyle(style: SkinShapeStyle): SkinShapeStyle {
   if (typeof style !== "string") return "clear";
@@ -107,6 +104,9 @@ function KeyboardRoot(props: {
   const candidateStoreRef = useRef<CandidateViewStore | null>(null);
   if (!candidateStoreRef.current) candidateStoreRef.current = new CandidateViewStore();
   const candidateStore = candidateStoreRef.current;
+  const t9PinyinStoreRef = useRef<T9PinyinViewStore | null>(null);
+  if (!t9PinyinStoreRef.current) t9PinyinStoreRef.current = new T9PinyinViewStore();
+  const t9PinyinStore = t9PinyinStoreRef.current;
   const editControllerRef = useRef<KeyboardEditController | null>(null);
   if (!editControllerRef.current) editControllerRef.current = new KeyboardEditController();
   const editController = editControllerRef.current;
@@ -140,7 +140,6 @@ function KeyboardRoot(props: {
   // Only root-level space-gesture thresholds 0, 1, 2, 3+ need a rerender.
   // Candidate texts and highlight are published to the separate candidate bar.
   const [candidateActionCount, setCandidateActionCount] = useState(0);
-  const [t9PinyinOptions, setT9PinyinOptions] = useState<string[]>([]);
   const [asciiMode, setAsciiMode] = useState(false);
   const [shifted, setShifted] = useState(false);
   const shiftedRef = useRef(false);
@@ -203,6 +202,7 @@ function KeyboardRoot(props: {
       startupTrace?.finish("cancelled");
       controllerRef.current = null;
       candidateStore.dispose();
+      t9PinyinStore.dispose();
       try { engineRef.current?.close(); } catch {}
       engineRef.current = null;
       try { CustomKeyboard.unmarkText(); } catch {}
@@ -247,7 +247,9 @@ function KeyboardRoot(props: {
     const t9Active = Boolean(engine && !engine.asciiMode && engine.isT9BridgeTargetSchema());
     let t9Options: string[] = [];
     if (t9Active && engine) t9Options = engine.queryT9PinyinOptions();
-    setT9PinyinOptions((previous) => sameStringList(previous, t9Options) ? previous : t9Options);
+    // Nine-key pinyin choices only repaint their own subscribed column.
+    // Rendering the root again on each choice list change recreates unaffected key rows.
+    t9PinyinStore.publish(t9Options);
 
     if (!nextPreedit) {
       resetExpandedCandidates();
@@ -638,8 +640,9 @@ function KeyboardRoot(props: {
         <VStack spacing={0} frame={{ width: leftCenterWidth, height: metrics.bodyHeight }}>
           <HStack spacing={metrics.keySpacing} frame={{ width: leftCenterWidth, height: topTouchHeight, alignment: "topLeading" as any }}>
             <VStack frame={{ width: metrics.t9.leftWidth, height: topTouchHeight, alignment: "topLeading" as any }}>
-              <T9PinyinColumn
-                options={asciiMode ? [] : t9PinyinOptions}
+              <T9PinyinColumnSubscriber
+                store={t9PinyinStore}
+                asciiMode={asciiMode}
                 skin={skin}
                 colors={colors}
                 width={metrics.t9.leftWidth}

@@ -445,6 +445,67 @@ test("candidate-only updates are isolated from keyboard root, preserving space s
   }
 });
 
+test("nine-key pinyin choices are published only when displayed values change", () => {
+  const { T9PinyinViewStore } = load("keyboard/runtime/T9PinyinViewStore.ts", ["T9PinyinViewStore"]);
+  const store = new T9PinyinViewStore();
+  const empty = store.getSnapshot();
+  assert.deepEqual(Array.from(empty), []);
+
+  const updates = [];
+  const unsubscribe = store.subscribe(items => updates.push(items));
+  const first = ["ni", "hao"];
+  assert.equal(store.publish(first), true);
+  assert.equal(store.getSnapshot(), first);
+  assert.equal(updates.length, 1);
+
+  const same = ["ni", "hao"];
+  assert.equal(store.publish(same), false);
+  assert.equal(store.getSnapshot(), first);
+  assert.equal(updates.length, 1);
+
+  // Equal count alone is insufficient: the left column must update on new pinyin.
+  const changed = ["na", "hao"];
+  assert.equal(store.publish(changed), true);
+  assert.equal(store.getSnapshot(), changed);
+  assert.equal(updates.length, 2);
+
+  // Subscriber registration after an early native startup can read this snapshot.
+  assert.equal(store.getSnapshot(), changed);
+  unsubscribe();
+  assert.equal(store.publish([]), true);
+  assert.equal(updates.length, 2);
+
+  store.dispose();
+  assert.deepEqual(Array.from(store.getSnapshot()), []);
+  assert.equal(store.publish(["late"]), false);
+  const late = store.subscribe(() => { throw Error("disposed store must not notify"); });
+  late();
+  assert.equal(updates.length, 2);
+});
+
+test("T9 pinyin updates repaint subscribed column without changing frozen touch geometry", () => {
+  const rootSource = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const subscriber = fs.readFileSync(path.join(root,
+    "keyboard/components/T9PinyinColumnSubscriber.tsx"), "utf8");
+  const column = fs.readFileSync(path.join(root,
+    "keyboard/components/T9PinyinColumn.tsx"), "utf8");
+
+  assert.match(rootSource, /const t9PinyinStoreRef = useRef<T9PinyinViewStore \| null>\(null\)/);
+  assert.match(rootSource, /t9PinyinStore\.publish\(t9Options\)/);
+  assert.match(rootSource, /t9PinyinStore\.dispose\(\)/);
+  assert.match(rootSource, /<T9PinyinColumnSubscriber[\s\S]*?store=\{t9PinyinStore\}[\s\S]*?asciiMode=\{asciiMode\}/);
+  assert.doesNotMatch(rootSource, /setT9PinyinOptions\(/);
+  assert.doesNotMatch(rootSource, /options=\{asciiMode \? \[\] : t9PinyinOptions\}/);
+  assert.match(subscriber, /const unsubscribe = store\.subscribe\(setOptions\)/);
+  assert.match(subscriber, /setOptions\(store\.getSnapshot\(\)\)/);
+  assert.match(subscriber, /return unsubscribe/);
+  // When switching to ASCII mode, show punctuation rather than stale pinyin.
+  assert.match(subscriber, /options=\{asciiMode \? \[\] : options\}/);
+  assert.match(column, /props\.options\.length > 0 \? props\.options :/);
+  assert.match(column, /<ScrollView axes="vertical"/);
+  assert.match(column, /onPunctuation\?\.\(option\)/);
+});
+
 test("horizontal candidate bar uses gapless full-rectangle native buttons", () => {
   const bar = fs.readFileSync(path.join(root, "keyboard/components/CandidateBar.tsx"), "utf8");
   const candidateScroll = bar.slice(bar.indexOf('<ScrollView\n'), bar.indexOf('</ScrollView>') + '</ScrollView>'.length);
