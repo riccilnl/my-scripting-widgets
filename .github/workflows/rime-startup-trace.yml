@@ -120,12 +120,19 @@ jobs:
           Both have an input A button and match the native toolbar and height
           presentation calls. Neither modifies the existing Rime keyboard.
 
-          These are frozen installers (no auto-update). Install both separately
-          and compare A-B-B-A in one text field with the same Low Power Mode.
-          Five or more trials per variant; compare the full 0.3.57 keyboard.
+          UPDATED iPhone video findings (2026-10-15): A, B and full Rime ALL
+          show a short Scripting keyboard loading spinner. Wanxiang updater
+          ALSO shows a spinner, but the user observed it ends much sooner:
+          the script UI is already visible as the keyboard opens fully.
+          Prior claims of zero spinner for A or Wanxiang were inaccurate.
+
+          These are historical frozen installers (no auto-update). Do not
+          repeat the obsolete script-internal A-B-B-A switching experiment.
+          The valid measure is time from EXTERNAL system keyboard activation
+          into Scripting to first visible frame and first usable input.
           No iPhone first-frame measurement can be inferred from JS marks.
           Static imports may be optimized by the Scripting runtime.
-          See scripts/rime输入法/docs/STARTUP_AB_CONTROLS_2026-10-14.md.
+          See scripts/rime输入法/docs/STARTUP_FIRST_FRAME_BASELINE_2026-10-15.md.
           ABEOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
