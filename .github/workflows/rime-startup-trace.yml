@@ -41,7 +41,7 @@ jobs:
         run: |
           set -eu
           mkdir -p previews/rime-startup-20261013
-          cp .git/perf-preview/Rime-startup-trace-0.3.53-preview.scripting previews/rime-startup-20261013/
+          cp .git/perf-preview/Rime-startup-trace-0.3.54-preview.scripting previews/rime-startup-20261013/
           cp .git/perf-preview/Rime-startup-trace-latest.zip previews/rime-startup-20261013/
           # Compatibility: iPhone Scripting pinned this versioned URL.
           # Keep the old imported URL serving the latest valid archive.
@@ -49,7 +49,7 @@ jobs:
           cp .git/perf-preview/Rime-startup-trace-latest.zip previews/rime-startup-20261013/Rime-startup-trace-0.3.46-preview.scripting
           cmp previews/rime-startup-20261013/Rime-startup-trace-0.3.46-preview.scripting previews/rime-startup-20261013/Rime-startup-trace-latest.zip
           (cd previews/rime-startup-20261013 &&
-            sha256sum Rime-startup-trace-0.3.46-preview.scripting Rime-startup-trace-0.3.53-preview.scripting Rime-startup-trace-latest.zip > SHA256SUMS.txt)
+            sha256sum Rime-startup-trace-0.3.46-preview.scripting Rime-startup-trace-0.3.54-preview.scripting Rime-startup-trace-latest.zip > SHA256SUMS.txt)
           cat > previews/rime-startup-20261013/README.md <<'EOF'
           # Rime startup diagnostics preview
 
@@ -70,6 +70,12 @@ jobs:
           Open its settings -> 性能诊断 -> 启用启动诊断.
           Dismiss and reopen the keyboard, then refresh this page.
 
+          This preview isolates candidate-bar subscriptions from full keyboard
+          state changes (Rime candidate text and highlight only). The frozen
+          original CandidateBar touch geometry, nine-key Lua, and Rime
+          initialization order are unchanged. Check 26-key and T9 candidate
+          selection, highlighted space-swipe gestures, and expanded scrolling.
+
           Records only Rime startup phase names, elapsed times, layout and success/failure/cancel.
           It never records text, candidates, paths or full schema identifiers.
           Default OFF; only the most recent startup is persisted.
@@ -77,7 +83,7 @@ jobs:
           This package may share Rime dictionaries, schemas and App Group data with
           the official keyboard. Avoid schema deployment/update while testing.
 
-          Official main 0.3.52 and the earlier A/B packages are unchanged.
+          Official main 0.3.52 is unchanged.
           EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

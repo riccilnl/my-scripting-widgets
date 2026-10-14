@@ -31,7 +31,8 @@ import { horizontalHitFrame, verticalHitFrame, type HorizontalHitFrame, type Ver
 import { InputController } from "../core/input/InputController";
 import { RimeEngine, type RimeSnapshot } from "../core/rime/RimeEngine";
 import { currentPageEntries, type CandidateEntry } from "../core/rime/CandidateView";
-import { CandidateBar } from "./components/CandidateBar";
+import { CandidateBarSubscriber } from "./components/CandidateBarSubscriber";
+import { CandidateViewStore } from "./runtime/CandidateViewStore";
 import { AuxiliarySurfaceHost, type AuxiliarySurfaceId } from "./components/AuxiliarySurfaceHost";
 import { ExpandedCandidatePanel } from "./components/ExpandedCandidatePanel";
 import { KeyView } from "./components/KeyView";
@@ -62,13 +63,6 @@ const EDIT_EFFECTS = { clipboardText: recordClipboardText } as const;
 
 function sameStringList(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function sameCandidateEntries(left: readonly CandidateEntry[], right: readonly CandidateEntry[]): boolean {
-  return left.length === right.length && left.every((entry, index) => (
-    entry.originalIndex === right[index]?.originalIndex &&
-    entry.candidate.text === right[index]?.candidate.text
-  ));
 }
 
 function keyboardBackgroundStyle(style: SkinShapeStyle): SkinShapeStyle {
@@ -110,6 +104,9 @@ function KeyboardRoot(props: {
   if (!metricsResolverRef.current) metricsResolverRef.current = createKeyboardMetricsResolver();
   const engineRef = useRef<RimeEngine | null>(null);
   const controllerRef = useRef<InputController | null>(null);
+  const candidateStoreRef = useRef<CandidateViewStore | null>(null);
+  if (!candidateStoreRef.current) candidateStoreRef.current = new CandidateViewStore();
+  const candidateStore = candidateStoreRef.current;
   const editControllerRef = useRef<KeyboardEditController | null>(null);
   if (!editControllerRef.current) editControllerRef.current = new KeyboardEditController();
   const editController = editControllerRef.current;
@@ -140,8 +137,9 @@ function KeyboardRoot(props: {
   // Diagnostic-only timestamp for the first Rime-bound tap before setup ends.
   const firstInputBeforeReadyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [candidates, setCandidates] = useState<CandidateEntry[]>([]);
-  const [highlightedCandidateIndex, setHighlightedCandidateIndex] = useState(0);
+  // Only root-level space-gesture thresholds 0, 1, 2, 3+ need a rerender.
+  // Candidate texts and highlight are published to the separate candidate bar.
+  const [candidateActionCount, setCandidateActionCount] = useState(0);
   const [t9PinyinOptions, setT9PinyinOptions] = useState<string[]>([]);
   const [asciiMode, setAsciiMode] = useState(false);
   const [shifted, setShifted] = useState(false);
@@ -204,6 +202,7 @@ function KeyboardRoot(props: {
       disposed = true;
       startupTrace?.finish("cancelled");
       controllerRef.current = null;
+      candidateStore.dispose();
       try { engineRef.current?.close(); } catch {}
       engineRef.current = null;
       try { CustomKeyboard.unmarkText(); } catch {}
@@ -238,8 +237,9 @@ function KeyboardRoot(props: {
     const nextPreedit = context?.preedit ?? "";
     setCompositionActive(Boolean(nextPreedit));
     const nextCandidates = currentPageEntries(context);
-    setCandidates((previous) => sameCandidateEntries(previous, nextCandidates) ? previous : nextCandidates);
-    setHighlightedCandidateIndex(Math.max(0, context?.menu?.highlightedIndex ?? 0));
+    candidateStore.publish(nextCandidates, Math.max(0, context?.menu?.highlightedIndex ?? 0));
+    // Preserve swipe-up (>1) and swipe-down (>2) availability on the space key.
+    setCandidateActionCount(Math.min(3, nextCandidates.length));
 
     const engine = engineRef.current;
     // F23 is essential after mutations, but the same mode/schema should not
@@ -353,7 +353,7 @@ function KeyboardRoot(props: {
     const requested = Math.trunc(steps);
     if (requested === 0) return;
 
-    if (compositionActive && candidates.length > 0) {
+    if (compositionActive && candidateActionCount > 0) {
       const engine = engineRef.current;
       if (!engine) return;
       const result = engine.moveHighlightedCandidate(requested);
@@ -488,7 +488,7 @@ function KeyboardRoot(props: {
         asciiMode={asciiMode}
         horizontalDrag={definition.semantic.kind === "space"
           ? {
-            stepSize: compositionActive && candidates.length > 0
+            stepSize: compositionActive && candidateActionCount > 0
               ? SPACE_CANDIDATE_DRAG_STEP
               : SPACE_CURSOR_DRAG_STEP,
             onSteps: (steps: number) => dispatchKeyboardAction(() => moveSpaceDrag(steps))
@@ -544,7 +544,7 @@ function KeyboardRoot(props: {
     const bottomDefinitions: KeyDefinition[] = [
       keyCatalog.qwerty.numbers,
       keyCatalog.qwerty.comma,
-      spaceKey("space", true, { compositionActive, candidateCount: candidates.length, t9: false }),
+      spaceKey("space", true, { compositionActive, candidateCount: candidateActionCount, t9: false }),
       keyCatalog.qwerty.mode,
       keyCatalog.qwerty.enter
     ];
@@ -622,7 +622,7 @@ function KeyboardRoot(props: {
     const bottomDefinitions: KeyDefinition[] = [
       keyCatalog.t9.symbols,
       keyCatalog.t9.numeric,
-      spaceKey("t9-space", true, { compositionActive, candidateCount: candidates.length, t9: true }),
+      spaceKey("t9-space", true, { compositionActive, candidateCount: candidateActionCount, t9: true }),
       keyCatalog.t9.mode
     ];
     const bottomWidths = [
@@ -767,7 +767,7 @@ function KeyboardRoot(props: {
             {[
               keyCatalog.numeric.abc,
               keyCatalog.numeric.zero,
-              spaceKey("numeric-space", false, { compositionActive, candidateCount: candidates.length, t9: false })
+              spaceKey("numeric-space", false, { compositionActive, candidateCount: candidateActionCount, t9: false })
             ].map((definition, index) =>
               renderKey(definition, metrics.numeric.keyWidth, metrics, {
                 ...horizontalHitFrame(index, 3, metrics.numeric.keyWidth, metrics.keySpacing),
@@ -922,10 +922,9 @@ function KeyboardRoot(props: {
               )
               : (
             <VStack spacing={metrics.rowSpacing} frame={{ width: metrics.width }}>
-              <CandidateBar
-                candidates={candidates}
+              <CandidateBarSubscriber
+                store={candidateStore}
                 compositionActive={compositionActive}
-                highlightedIndex={highlightedCandidateIndex}
                 ready={ready}
                 error={error}
                 skin={skin}

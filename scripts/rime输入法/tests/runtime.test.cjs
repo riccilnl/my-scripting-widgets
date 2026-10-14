@@ -370,6 +370,81 @@ test("T9 existence-check errors cannot be mistaken for absent user configuration
   assert.deepEqual(calls, []);
 });
 
+test("candidate view store publishes only visible changes and reuses stable lists", () => {
+  const { CandidateViewStore } = load("keyboard/runtime/CandidateViewStore.ts", ["CandidateViewStore"]);
+  const store = new CandidateViewStore();
+  const initial = store.getSnapshot();
+  assert.deepEqual(Array.from(initial.candidates), []);
+  assert.equal(initial.highlightedIndex, 0);
+
+  const updates = [];
+  const unsubscribe = store.subscribe(snapshot => updates.push(snapshot));
+  const first = [{ originalIndex: 0, candidate: { text: "甲", comment: "a" } },
+    { originalIndex: 1, candidate: { text: "乙", comment: "b" } }];
+  assert.equal(store.publish(first, 0), true);
+  assert.equal(updates.length, 1);
+  assert.equal(store.getSnapshot().candidates, first);
+  const snap1 = store.getSnapshot();
+
+  const same = first.map(entry => ({ originalIndex: entry.originalIndex,
+    candidate: { text: entry.candidate.text, comment: "changed comment" } }));
+  // CandidateBar renders only firstDisplayLine(text), not comments.
+  assert.equal(store.publish(same, 0), false);
+  assert.equal(store.getSnapshot(), snap1);
+  assert.equal(updates.length, 1);
+
+  // Highlight-only changes must notify CandidateBar but reuse its candidate list.
+  assert.equal(store.publish(same, 1), true);
+  assert.equal(updates.length, 2);
+  assert.equal(store.getSnapshot().candidates, first);
+  assert.equal(store.getSnapshot().highlightedIndex, 1);
+
+  // Candidate page selection changes displayed indices, even if text repeats.
+  const nextPage = [{ originalIndex: 5, candidate: { text: "甲" } }];
+  assert.equal(store.publish(nextPage, 0), true);
+  assert.equal(updates.length, 3);
+  assert.equal(store.getSnapshot().candidates, nextPage);
+  unsubscribe();
+  assert.equal(store.publish([], 0), true);
+  assert.equal(updates.length, 3);
+  store.dispose();
+  assert.equal(store.getSnapshot().candidates.length, 0);
+  assert.equal(store.publish(first, 0), false);
+  const late = store.subscribe(() => { throw Error("should not notify"); });
+  late();
+  assert.equal(updates.length, 3);
+});
+
+test("candidate-only updates are isolated from keyboard root, preserving space swipe thresholds", () => {
+  const rootSource = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const subscriber = fs.readFileSync(path.join(root,
+    "keyboard/components/CandidateBarSubscriber.tsx"), "utf8");
+  const bar = fs.readFileSync(path.join(root, "keyboard/components/CandidateBar.tsx"), "utf8");
+
+  assert.match(rootSource, /const candidateStoreRef = useRef<CandidateViewStore \| null>\(null\);/);
+  assert.match(rootSource, /candidateStore\.publish\(nextCandidates, Math\.max\(0,/);
+  assert.match(rootSource, /setCandidateActionCount\(Math\.min\(3, nextCandidates\.length\)\)/);
+  assert.match(rootSource, /<CandidateBarSubscriber\s+store=\{candidateStore\}/);
+  assert.match(rootSource, /candidateStore\.dispose\(\)/);
+  assert.doesNotMatch(rootSource, /setCandidates\(|setHighlightedCandidateIndex\(/);
+  assert.match(subscriber, /const unsubscribe = store\.subscribe\(setSnapshot\)/);
+  assert.match(subscriber, /setSnapshot\(store\.getSnapshot\(\)\)/);
+  assert.match(subscriber, /return unsubscribe/);
+  assert.match(subscriber, /<CandidateBar[\s\S]*?candidates=\{snapshot\.candidates\}/);
+  assert.match(bar, /props\.candidates\.slice\(0, 12\)/);
+
+  const { spaceActionMap } = load("keyboard/actions/specialKeyActions.ts", ["spaceActionMap"]);
+  const serialized = count => JSON.stringify(spaceActionMap({
+    compositionActive: true, candidateCount: Math.min(3, count), t9: false
+  }));
+  for (const count of [0, 1, 2, 3, 4, 7, 12]) {
+    const baseline = JSON.stringify(spaceActionMap({
+      compositionActive: true, candidateCount: count, t9: false
+    }));
+    assert.equal(serialized(count), baseline, "space action count " + count);
+  }
+});
+
 test("horizontal candidate bar uses gapless full-rectangle native buttons", () => {
   const bar = fs.readFileSync(path.join(root, "keyboard/components/CandidateBar.tsx"), "utf8");
   const candidateScroll = bar.slice(bar.indexOf('<ScrollView\n'), bar.indexOf('</ScrollView>') + '</ScrollView>'.length);
