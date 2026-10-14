@@ -13,6 +13,12 @@ test("startup has three nonempty tabs with ordinary presentation", () => {
   assert.match(source, /element: <App \/>/)
 })
 
+test("cloud uses a native searchable List with view-only backup protections", () => {
+  assert.match(source, /<List navigationTitle="云盘" searchable=/)
+  assert.match(source, /source === "push_message"/)
+  assert.match(source, /备用列表（只读）/)
+})
+
 test("manifest retains sharing and stable update subscription", () => {
   assert.equal(manifest.entry, "index.tsx")
   assert.equal(manifest.author.name, "Ricci")

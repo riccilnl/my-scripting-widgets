@@ -3,6 +3,7 @@ import {
   Form,
   HStack,
   Image,
+  List,
   Menu,
   Navigation,
   NavigationStack,
@@ -264,7 +265,7 @@ function CloudView(props: {
     : items
 
   return (
-    <Form navigationTitle="云盘" searchable={{ value: query, onChanged: setQuery, prompt: "搜索推送书名" }}>
+    <List navigationTitle="云盘" searchable={{ value: query, onChanged: setQuery, prompt: "搜索推送书名" }}>
       <Section>
         <Button
           title="刷新推送列表"
@@ -278,6 +279,7 @@ function CloudView(props: {
       </Section>
 
       <Section header={<Text>推送列表 · {visible.length}/{items.length}</Text>}>
+        {items.some((item) => item.source === "push_message") ? <Text font="caption" foregroundStyle="secondaryLabel">使用 BOOX 备用列表（只读）；刷新后可尝试恢复管理功能。</Text> : null}
         {!props.session ? (
           <VStack alignment="leading" spacing={8}>
             <Text>登录后可查看和管理已推送到 BOOX 的电子书。</Text>
@@ -310,14 +312,14 @@ function CloudView(props: {
                 <Button
                   title="重新推送"
                   systemImage="paperplane"
-                  disabled={busyId !== null}
+                  disabled={busyId !== null || item.source === "push_message"}
                   action={() => repush(item)}
                 />
                 <Button
                   title="删除"
                   systemImage="trash"
                   role="destructive"
-                  disabled={busyId !== null}
+                  disabled={busyId !== null || item.source === "push_message"}
                   action={() => remove(item)}
                 />
               </Menu>
@@ -327,7 +329,7 @@ function CloudView(props: {
           <Text>{keyword && items.length ? "没有匹配的电子书" : "暂无已推送的电子书"}</Text>
         )}
       </Section>
-    </Form>
+    </List>
   )
 }
 

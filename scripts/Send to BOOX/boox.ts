@@ -1,4 +1,5 @@
 import { Path } from "scripting"
+import { parsePushMessagePage } from "./cloud-list"
 
 export type BooxRegion = "cn" | "us" | "eu"
 
@@ -42,6 +43,7 @@ export type BooxPushBook = {
   objectKey: string | null
   doc: Record<string, any>
   content: Record<string, any>
+  source?: "push_message"
 }
 
 const REGION_HOSTS: Record<BooxRegion, string> = {
@@ -1049,27 +1051,67 @@ function pushBookFromDoc(doc: Record<string, any>): BooxPushBook | null {
 export async function listPushBooks(): Promise<BooxPushBook[]> {
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
-  const sync = await getSyncSession(session)
-  const channel = encodeURIComponent(`${session.uid}-MESSAGE`)
-  const payload = await syncGatewayJSON(
-    session,
-    sync,
-    `/_changes?filter=sync_gateway/bychannel&channels=${channel}&include_docs=true&active_only=true&limit=10000&style=main_only`,
-  )
 
-  const docs = Array.isArray(payload?.results)
-    ? payload.results.map((row: any) => row?.doc).filter(Boolean)
-    : []
-
-  return docs
-    .map((doc: Record<string, any>) => pushBookFromDoc(doc))
-    .filter((item: BooxPushBook | null): item is BooxPushBook => item !== null)
-    .sort((a: BooxPushBook, b: BooxPushBook) =>
-      (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt),
+  // Prefer versioned Sync Gateway documents; only those can be safely edited.
+  // If that source fails or reports no usable books, try BOOX's read-only
+  // push/message endpoint rather than incorrectly displaying an empty cloud.
+  let gatewayState = "Sync Gateway 未返回推送记录"
+  try {
+    const sync = await getSyncSession(session)
+    const channel = encodeURIComponent(session.uid + "-MESSAGE")
+    const payload = await syncGatewayJSON(
+      session,
+      sync,
+      "/_changes?filter=sync_gateway/bychannel&channels=" + channel +
+        "&include_docs=true&active_only=true&limit=10000&style=main_only",
     )
+    if (!Array.isArray(payload?.results)) {
+      throw new Error("Sync Gateway 未返回列表结构")
+    }
+    const books = payload.results
+      .map((row: any) => row?.doc)
+      .filter(Boolean)
+      .map((doc: Record<string, any>) => pushBookFromDoc(doc))
+      .filter((item: BooxPushBook | null): item is BooxPushBook => item !== null)
+    if (books.length) {
+      return books.sort((a, b) =>
+        (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt),
+      )
+    }
+  } catch (error) {
+    gatewayState = friendlyError(error)
+  }
+
+  const pageSize = 100
+  const seen = new Map<string, BooxPushBook>()
+  try {
+    for (let page = 0; page < 5; page++) {
+      const where = encodeURIComponent(JSON.stringify({
+        limit: pageSize, offset: page * pageSize, parent: 0,
+      }))
+      const response = await booxJSON(
+        session.region, "/api/1/push/message?where=" + where,
+        { token: session.token },
+      )
+      const parsed = parsePushMessagePage(response)
+      for (const book of parsed.books) {
+        if (!seen.has(book.id)) seen.set(book.id, book)
+      }
+      if (parsed.totalEntries < pageSize) break
+    }
+  } catch (error) {
+    throw new Error(
+      "云盘列表读取失败。Sync Gateway：" + gatewayState +
+      "；备用接口：" + friendlyError(error),
+    )
+  }
+  return [...seen.values()].sort((a, b) =>
+    (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt),
+  )
 }
 
 export async function deletePushBook(item: BooxPushBook): Promise<void> {
+  if (item.source === "push_message") throw new Error("备用列表只支持查看，不能安全删除")
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
   if (!item.id || !item.rev) throw new Error("该云端记录缺少文档版本，无法删除")
@@ -1121,6 +1163,7 @@ async function bumpPushDocument(
 }
 
 export async function repushPushBook(item: BooxPushBook): Promise<BooxPushBook> {
+  if (item.source === "push_message") throw new Error("备用列表只支持查看，不能安全重新推送")
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
   if (!item.objectKey) throw new Error("该电子书没有 OSS 文件地址，无法重新推送")
