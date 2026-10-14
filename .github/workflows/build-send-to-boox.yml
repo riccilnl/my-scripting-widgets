@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: true
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -75,8 +76,34 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- 'Send to BOOX.scripting' README.md
-          if ! git diff --cached --quiet; then
+          cp 'Send to BOOX.scripting' "${RUNNER_TEMP}/boox-built.scripting"
+
+          # Rapid source pushes make older workflow checkouts stale. Never
+          # publish a package if main contains newer BOOX source or workflow.
+          # Reapply only the verified artifact to the current main commit.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git diff --quiet "${GITHUB_SHA}" origin/main -- 'scripts/Send to BOOX' '.github/workflows/build-send-to-boox.yml'; then
+              echo "A newer BOOX source commit exists; its workflow will publish."
+              exit 0
+            fi
+
+            git reset --hard origin/main
+            cp "${RUNNER_TEMP}/boox-built.scripting" 'Send to BOOX.scripting'
+            node - <<'NODE'
+          const links = require('./scripts/update_links.js')
+          links.updateReadme(links.validateReadme(process.cwd()), links.getScriptingFiles(process.cwd()))
+          NODE
+            git add -- 'Send to BOOX.scripting' README.md
+            if git diff --cached --quiet; then
+              echo "Installation package is already current."
+              exit 0
+            fi
             git commit -m "build(boox): publish Scripting installation package"
-            git push
-          fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "main moved during publish attempt ${attempt}; retrying"
+          done
+          echo "Publish failed after 3 attempts"
+          exit 1
