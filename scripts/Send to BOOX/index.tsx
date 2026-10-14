@@ -19,6 +19,7 @@ import {
   VStack,
   useEffect,
   useObservable,
+  useRef,
   useState,
 } from "scripting"
 import {
@@ -47,8 +48,12 @@ import {
 
 function formatRecentTime(value: number): string {
   const date = new Date(value)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  if (!Number.isFinite(date.getTime())) return "时间未知"
+  try {
+    return new Intl.DateTimeFormat(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date)
+  } catch {
+    return date.toLocaleString()
+  }
 }
 
 function formatBytes(value: number | null | undefined): string {
@@ -64,6 +69,7 @@ function formatBytes(value: number | null | undefined): string {
 
 function HomeView(props: {
   session: BooxSession | null
+  onRequestLogin: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState("")
@@ -124,7 +130,7 @@ function HomeView(props: {
   }
 
   return (
-    <Form navigationTitle="首页">
+    <Form navigationTitle="首页" onAppear={() => setRecent(loadRecentSends())}>
       <Section>
         <Button
           title="添加图书并发送"
@@ -133,16 +139,26 @@ function HomeView(props: {
           action={chooseAndSend}
         />
         {busy ? <ProgressView /> : null}
-        <Text>{status || (props.session ? "准备就绪" : "请先在设置中登录 BOOX")}</Text>
+        {status ? <Text>{status}</Text> : null}
+        {!props.session ? (
+          <VStack alignment="leading" spacing={8}>
+            <Text>请先登录 BOOX，即可将文件发送到阅读器。</Text>
+            <Button title="前往登录" systemImage="person.crop.circle" action={props.onRequestLogin} />
+          </VStack>
+        ) : null}
       </Section>
 
       <Section header={<Text>发送历史</Text>}>
         {recent.length ? (
           recent.map((item, index) => (
-            <Text key={`${item.time}-${index}`}>
-              {item.ok ? "✓" : "×"} {item.name} · {formatRecentTime(item.time)}
-              {item.detail ? ` · ${item.detail}` : ""}
-            </Text>
+            <HStack key={String(item.time) + "-" + index} spacing={10}>
+              <Image systemName={item.ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill"} accessibilityLabel={item.ok ? "发送成功" : "发送失败"} />
+              <VStack alignment="leading" spacing={3}>
+                <Text>{item.name}</Text>
+                <Text font="caption" foregroundStyle="secondaryLabel">{item.ok ? "发送成功" : "发送失败"} · {formatRecentTime(item.time)}</Text>
+                {!item.ok && item.detail ? <Text font="caption" foregroundStyle="secondaryLabel">{item.detail}</Text> : null}
+              </VStack>
+            </HStack>
           ))
         ) : (
           <Text>暂无发送记录</Text>
@@ -481,12 +497,12 @@ function App() {
     <TabView selection={selection}>
       <Tab title="首页" systemImage="house.fill" value={0}>
         <NavigationStack>
-          <HomeView session={session} />
+          <HomeView session={session} onRequestLogin={() => selection.setValue(2)} />
         </NavigationStack>
       </Tab>
       <Tab title="云盘" systemImage="books.vertical.fill" value={1}>
         <NavigationStack>
-          <CloudView session={session} />
+          <CloudView session={session} onRequestLogin={() => selection.setValue(2)} />
         </NavigationStack>
       </Tab>
       <Tab title="设置" systemImage="gearshape.fill" value={2}>
