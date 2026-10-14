@@ -38,7 +38,7 @@ test("region switching confirms before clearing credentials", () => {
 
 test("cloud regression: preserve the 0.1.10 Form and simple refresh", () => {
   assert.match(source, /<Form navigationTitle="云盘">/)
-  assert.match(source, /setStatus\(`正在读取 BOOX 推送列表…`\)/)
+  assert.match(source, /setStatus\("正在读取 BOOX 推送列表…"\)/)
   assert.match(source, /setLoading\(false\)/)
   assert.doesNotMatch(source, /requestRef\.current/)
   assert.doesNotMatch(source, /<List navigationTitle="云盘"/)
