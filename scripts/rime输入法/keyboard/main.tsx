@@ -32,6 +32,7 @@ import { InputController } from "../core/input/InputController";
 import { RimeEngine, type RimeSnapshot } from "../core/rime/RimeEngine";
 import { currentPageEntries, type CandidateEntry } from "../core/rime/CandidateView";
 import { CandidateBarSubscriber } from "./components/CandidateBarSubscriber";
+import { shouldRenderKeyboardHeader } from "./toolbar/headerMode";
 import { CandidateViewStore } from "./runtime/CandidateViewStore";
 import { AuxiliarySurfaceHost, type AuxiliarySurfaceId } from "./components/AuxiliarySurfaceHost";
 import { ExpandedCandidatePanel } from "./components/ExpandedCandidatePanel";
@@ -113,6 +114,7 @@ function KeyboardRoot(props: {
   const markedTextActiveRef = useRef(false);
 
   const initialSettings = props.initialSettings;
+  const showToolbar = initialSettings.showToolbar;
   const chineseLayoutRef = useRef<ChineseLayoutId>(initialSettings.chineseLayout);
   const keyFacePreferences = initialSettings.keyFacePreferences;
   const actionPreferences = initialSettings.actionPreferences;
@@ -925,22 +927,34 @@ function KeyboardRoot(props: {
               )
               : (
             <VStack spacing={metrics.rowSpacing} frame={{ width: metrics.width }}>
-              <CandidateBarSubscriber
-                store={candidateStore}
-                compositionActive={compositionActive}
-                ready={ready}
-                error={error}
-                skin={skin}
-                colors={colors}
-                width={metrics.width}
-                height={metrics.candidateHeight}
-                expanded={candidateExpanded}
-                onSelect={selectCandidate}
-                onToggleExpanded={toggleCandidateExpanded}
-                onDismissKeyboard={dismissKeyboard}
-                onCommand={executeKeyCommand}
-                toolbarItems={toolbarItems}
-              />
+              {shouldRenderKeyboardHeader({
+                showToolbar,
+                ready,
+                error,
+                compositionActive,
+                candidateCount: candidateActionCount
+              }) ? (
+                <CandidateBarSubscriber
+                  store={candidateStore}
+                  compositionActive={compositionActive}
+                  ready={ready}
+                  error={error}
+                  skin={skin}
+                  colors={colors}
+                  width={metrics.width}
+                  height={metrics.candidateHeight}
+                  expanded={candidateExpanded}
+                  onSelect={selectCandidate}
+                  onToggleExpanded={toggleCandidateExpanded}
+                  onDismissKeyboard={dismissKeyboard}
+                  onCommand={executeKeyCommand}
+                  toolbarItems={toolbarItems}
+                />
+              ) : (
+                // Diagnostic comparison: no idle toolbar, home/dismiss icons,
+                // or candidate-bar subscriber nodes. Preserve keyboard geometry.
+                <VStack frame={{ width: metrics.width, height: metrics.candidateHeight }} />
+              )}
               {candidateExpanded
                 ? (
                   <ExpandedCandidatePanel

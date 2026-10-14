@@ -35,7 +35,7 @@ export type ToolbarToolId =
   | "clipboard"
   | "common-phrases";
 
-export type ToolbarPreferences = { items: ToolbarToolId[] };
+export type ToolbarPreferences = { items: ToolbarToolId[]; showToolbar: boolean };
 export const MAX_TOOLBAR_ITEMS = 8;
 export const DEFAULT_TOOLBAR_ITEMS: readonly ToolbarToolId[] = [
   "cursor-left",
@@ -93,6 +93,7 @@ export type KeyboardRuntimeSettings = {
   keyPopupEnabled: boolean;
   actionPreferences: KeyActionPreferences;
   toolbarItems: ToolbarToolId[];
+  showToolbar: boolean;
   t9CustomKey: RuntimeT9CustomKey;
 };
 
@@ -214,11 +215,13 @@ export function normalizeKeyActionPreferencesValue(value: any): KeyActionPrefere
 }
 
 export function defaultToolbarPreferencesValue(): ToolbarPreferences {
-  return { items: [...DEFAULT_TOOLBAR_ITEMS] };
+  return { items: [...DEFAULT_TOOLBAR_ITEMS], showToolbar: true };
 }
 
 export function normalizeToolbarPreferencesValue(value: any): ToolbarPreferences {
-  if (!Array.isArray(value?.items)) return defaultToolbarPreferencesValue();
+  // Older settings have items but no switch: default to the original visible toolbar.
+  const showToolbar = value?.showToolbar !== false;
+  if (!Array.isArray(value?.items)) return { ...defaultToolbarPreferencesValue(), showToolbar };
   const items: ToolbarToolId[] = [];
   const seen = new Set<string>();
   for (const raw of value.items) {
@@ -227,7 +230,7 @@ export function normalizeToolbarPreferencesValue(value: any): ToolbarPreferences
     items.push(raw as ToolbarToolId);
     if (items.length >= MAX_TOOLBAR_ITEMS) break;
   }
-  return { items };
+  return { items, showToolbar };
 }
 
 export function normalizeT9CustomKeyPreferencesValue(value: any): T9CustomKeyPreferences {

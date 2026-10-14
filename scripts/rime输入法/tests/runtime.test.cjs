@@ -1289,3 +1289,68 @@ test("auxiliary clipboard and common-phrase scroll panes expose continuous hit g
   assert.ok(source.includes("onTapGesture={() => setSelectedCategoryId(category.id)}"));
   assert.ok(source.includes("if (horizontal && dx <= -deleteThreshold) props.onDelete()"));
 });
+
+
+test("toolbar visibility switch defaults on and migrates old preferences", () => {
+  const { defaultToolbarPreferencesValue, normalizeToolbarPreferencesValue } =
+    load("contracts/preferences.ts", [
+      "defaultToolbarPreferencesValue", "normalizeToolbarPreferencesValue"
+    ]);
+  assert.equal(defaultToolbarPreferencesValue().showToolbar, true);
+  const old = normalizeToolbarPreferencesValue({ items: ["copy", "paste"] });
+  assert.equal(old.showToolbar, true);
+  assert.deepEqual(Array.from(old.items), ["copy", "paste"]);
+  const off = normalizeToolbarPreferencesValue({ ...old, showToolbar: false });
+  assert.equal(off.showToolbar, false);
+  assert.deepEqual(Array.from(off.items), ["copy", "paste"]);
+  assert.equal(normalizeToolbarPreferencesValue({ showToolbar: false }).showToolbar, false);
+  const dirty = normalizeToolbarPreferencesValue({
+    showToolbar: false, items: ["copy", "copy", "invalid", "paste"]
+  });
+  assert.deepEqual(Array.from(dirty.items), ["copy", "paste"]);
+  assert.equal(dirty.showToolbar, false);
+  assert.equal(normalizeToolbarPreferencesValue({ items: [] }).showToolbar, true);
+});
+
+test("toolbar off removes only idle header nodes, retaining candidate and status displays", () => {
+  const { resolveKeyboardHeaderMode, shouldRenderKeyboardHeader } = load(
+    "keyboard/toolbar/headerMode.ts",
+    ["resolveKeyboardHeaderMode", "shouldRenderKeyboardHeader"]
+  );
+  const idle = { ready: true, error: null, compositionActive: false, candidateCount: 0 };
+  assert.equal(resolveKeyboardHeaderMode(idle), "toolbar");
+  assert.equal(shouldRenderKeyboardHeader({ ...idle, showToolbar: true }), true);
+  assert.equal(shouldRenderKeyboardHeader({ ...idle, showToolbar: false }), false);
+  for (const candidateCount of [1, 2, 3, 12]) {
+    const options = { ...idle, candidateCount, showToolbar: false };
+    assert.equal(resolveKeyboardHeaderMode(options), "candidate");
+    assert.equal(shouldRenderKeyboardHeader(options), true);
+  }
+  assert.equal(shouldRenderKeyboardHeader({ ...idle,
+    compositionActive: true, showToolbar: false }), true);
+  assert.equal(shouldRenderKeyboardHeader({ ...idle,
+    ready: false, showToolbar: false }), true);
+  assert.equal(shouldRenderKeyboardHeader({ ...idle,
+    error: "failure", showToolbar: false }), true);
+});
+
+test("toolbar switch is persisted and does not change keyboard or candidate hit geometry", () => {
+  const source = relative => fs.readFileSync(path.join(root, relative), "utf8");
+  const rootSource = source("keyboard/main.tsx");
+  const settings = source("ui/settings/KeyboardSettingsPage.tsx");
+  const editor = source("ui/settings/ToolbarSettingsPage.tsx");
+  const runtime = source("keyboard/runtime/KeyboardRuntimeSettings.ts");
+  const bar = source("keyboard/components/CandidateBar.tsx");
+  assert.match(settings, /title="显示工具栏（性能对照）"/);
+  assert.match(settings, /toolbarPreferences = \{ \.\.\.current\.toolbarPreferences, showToolbar: value \}/);
+  assert.match(settings, /onChanged=\{changeShowToolbar\}/);
+  assert.match(editor, /toolbarPreferences: \{ \.\.\.current\.toolbarPreferences, items: currentIds \}/);
+  assert.match(runtime, /showToolbar: settings\.toolbarPreferences\.showToolbar/);
+  assert.match(rootSource, /const showToolbar = initialSettings\.showToolbar/);
+  assert.match(rootSource, /shouldRenderKeyboardHeader\(\{[\s\S]*?candidateCount: candidateActionCount[\s\S]*?\}\) \? \(/);
+  assert.match(rootSource, /<CandidateBarSubscriber[\s\S]*?\) : \([\s\S]*?<VStack frame=\{\{ width: metrics\.width, height: metrics\.candidateHeight \}\} \/>/);
+  assert.match(bar, /<ToolbarStrip/);
+  assert.match(bar, /props\.candidates\.slice\(0, 12\)/);
+  assert.match(rootSource, /CustomKeyboard\.setToolbarVisible\(false\)/);
+  assert.doesNotMatch(rootSource, /CustomKeyboard\.setToolbarVisible\(true\)/);
+});

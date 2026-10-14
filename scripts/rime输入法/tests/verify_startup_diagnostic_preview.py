@@ -14,7 +14,7 @@ def verify():
     target = OUT / FILENAME
     source = source_files()
     assert Path(info["path"]) == target
-    assert info["project_name"] == PROJECT and info["version"] == "0.3.55"
+    assert info["project_name"] == PROJECT and info["version"] == "0.3.56"
     # Auto-update MUST fetch the mutable test branch, never an immutable Git SHA.
     assert REMOTE_ARCHIVE_URL.endswith("/" + REMOTE_ARCHIVE_NAME)
     assert "/refs/heads/perf/rime-startup-trace/" in REMOTE_ARCHIVE_URL
@@ -28,6 +28,7 @@ def verify():
     official = official_files()
     for path in (
         "keyboard/components/CandidateBar.tsx",
+        "keyboard/toolbar/ToolbarStrip.tsx",
         "keyboard/components/T9PinyinColumn.tsx",
         "core/rime/T9BridgeAsset.ts",
         "keyboard/input/TouchIntentMachine.ts",
@@ -43,7 +44,7 @@ def verify():
             if relative == "script.json":
                 data = json.loads(actual)
                 baseline = json.loads(expected)
-                assert data["name"] == PROJECT and data["version"] == "0.3.55"
+                assert data["name"] == PROJECT and data["version"] == "0.3.56"
                 assert data["remoteResource"] == {
                     "url": REMOTE_ARCHIVE_URL,
                     "autoUpdateInterval": AUTO_UPDATE_INTERVAL

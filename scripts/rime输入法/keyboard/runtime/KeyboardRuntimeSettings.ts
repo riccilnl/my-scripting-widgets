@@ -17,6 +17,7 @@ export function readKeyboardRuntimeSettings(): KeyboardRuntimeSettings {
     keyPopupEnabled: settings.feedbackPreferences.keyPopupEnabled,
     actionPreferences: settings.actionPreferences,
     toolbarItems: [...settings.toolbarPreferences.items],
+    showToolbar: settings.toolbarPreferences.showToolbar,
     t9CustomKey: {
       label: settings.t9CustomKeyPreferences.label,
       command: resolveT9CustomKeyCommandValue(settings.t9CustomKeyPreferences)
