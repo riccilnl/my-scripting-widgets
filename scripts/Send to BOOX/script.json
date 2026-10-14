@@ -8,7 +8,7 @@
     "zh": "发送到 BOOX",
     "en": "Send to BOOX"
   },
-  "version": "0.1.9",
+  "version": "0.1.10",
   "permissions": null,
   "name": "Send to BOOX",
   "runInApp": false,
