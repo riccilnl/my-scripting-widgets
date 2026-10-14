@@ -17,11 +17,11 @@ increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
-This preview isolates candidate-bar subscriptions from full keyboard
-state changes (Rime candidate text and highlight only). The frozen
-original CandidateBar touch geometry, nine-key Lua, and Rime
-initialization order are unchanged. Check 26-key and T9 candidate
-selection, highlighted space-swipe gestures, and expanded scrolling.
+This preview isolates candidate-bar updates and T9 left-column
+pinyin-choice updates from the keyboard root. The original CandidateBar
+and T9PinyinColumn touch/scroll geometry, nine-key Lua, and Rime
+initialization order are unchanged. Verify Chinese/ASCII T9 switching,
+pinyin selection, space swipes, 26-key input and expanded scrolling.
 
 Records only Rime startup phase names, elapsed times, layout and success/failure/cancel.
 It never records text, candidates, paths or full schema identifiers.
