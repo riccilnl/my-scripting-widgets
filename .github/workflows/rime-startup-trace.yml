@@ -37,6 +37,10 @@ jobs:
         run: python3 -B scripts/rime输入法/tests/create_startup_diagnostic_preview.py
       - name: Verify every packaged source file
         run: python3 -B scripts/rime输入法/tests/verify_startup_diagnostic_preview.py
+      - name: Build immutable startup A/B controls
+        run: python3 -B scripts/rime输入法/tests/create_startup_ab_previews.py
+      - name: Verify immutable startup A/B controls
+        run: python3 -B scripts/rime输入法/tests/verify_startup_ab_previews.py
       - name: Commit diagnostic installation package only on preview branch
         run: |
           set -eu
@@ -91,9 +95,32 @@ jobs:
 
           Official main 0.3.52 is unchanged.
           EOF
+          # Independent immutable A/B installers: do not replace Rime latest.zip.
+          mkdir -p previews/rime-startup-ab-20261014
+          cp .git/perf-preview/Rime-startup-ab-full-deps-0.1.0.scripting previews/rime-startup-ab-20261014/
+          cp .git/perf-preview/Rime-startup-ab-minimal-deps-0.1.0.scripting previews/rime-startup-ab-20261014/
+          (cd previews/rime-startup-ab-20261014 &&
+            sha256sum Rime-startup-ab-full-deps-0.1.0.scripting Rime-startup-ab-minimal-deps-0.1.0.scripting > SHA256SUMS.txt)
+          cat > previews/rime-startup-ab-20261014/README.md <<'ABEOF'
+          # Frozen 0.1.0 startup-chain A/B
+
+          Rime-startup-ab-full-deps-0.1.0.scripting is control A:
+          full 0.3.57 static Rime dependency graph, but minimal UI / no Rime setup.
+          Rime-startup-ab-minimal-deps-0.1.0.scripting is control B:
+          just three files, no Rime imports, the same minimal UI.
+          Both have an input A button and match the native toolbar and height
+          presentation calls. Neither modifies the existing Rime keyboard.
+
+          These are frozen installers (no auto-update). Install both separately
+          and compare A-B-B-A in one text field with the same Low Power Mode.
+          Five or more trials per variant; compare the full 0.3.57 keyboard.
+          No iPhone first-frame measurement can be inferred from JS marks.
+          Static imports may be optimized by the Scripting runtime.
+          See scripts/rime输入法/docs/STARTUP_AB_CONTROLS_2026-10-14.md.
+          ABEOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- previews/rime-startup-20261013
+          git add -- previews/rime-startup-20261013 previews/rime-startup-ab-20261014
           if ! git diff --cached --quiet; then
             git commit -m "build(rime): publish independent startup diagnostics preview"
             git push origin HEAD:refs/heads/perf/rime-startup-trace
