@@ -23,6 +23,12 @@ and T9PinyinColumn touch/scroll geometry, nine-key Lua, and Rime
 initialization order are unchanged. Verify Chinese/ASCII T9 switching,
 pinyin selection, space swipes, 26-key input and expanded scrolling.
 
+0.3.56 adds Settings -> 键盘设置 -> 动作与工具栏 ->
+显示工具栏（性能对照） switch. Off omits the idle toolbar
+nodes while retaining candidate and initialization-status headers.
+The original top height remains reserved. Reopen the keyboard
+to apply settings. iPhone spinner reduction is unverified.
+
 Records only Rime startup phase names, elapsed times, layout and success/failure/cancel.
 It never records text, candidates, paths or full schema identifiers.
 Default OFF; only the most recent startup is persisted.
