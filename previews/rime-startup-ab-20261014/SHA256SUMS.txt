@@ -1,0 +1,2 @@
+c49ab0607b7f03751ffd673590ba11dc1102e154b3c353e046203de916f30a39  Rime-startup-ab-full-deps-0.1.0.scripting
+cd0e23524692b33e196256097b9688c7364ad020d0fe89f6f7dc3acccc18ebbb  Rime-startup-ab-minimal-deps-0.1.0.scripting
