@@ -51,7 +51,11 @@ jobs:
                   assert archive.read(target) == (folder / name).read_bytes(), target
               manifest = json.loads(archive.read("Send to BOOX/script.json"))
               assert manifest["author"]["name"] == "Ricci"
-              assert manifest["version"] == "0.1.7"
+              assert manifest["version"].count(".") == 2
+              assert manifest["remoteResource"] == {
+                  "url": "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/Send%20to%20BOOX.scripting",
+                  "autoUpdateInterval": 3600,
+              }
           print("SEND_TO_BOOX_PACKAGE_PASS")
           PY
 

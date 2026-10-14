@@ -8,7 +8,7 @@
     "zh": "发送到 BOOX",
     "en": "Send to BOOX"
   },
-  "version": "0.1.7",
+  "version": "0.1.8",
   "permissions": null,
   "name": "Send to BOOX",
   "runInApp": false,
@@ -18,7 +18,10 @@
     "email": null
   },
   "contributors": [],
-  "remoteResource": null,
+  "remoteResource": {
+    "url": "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/Send%20to%20BOOX.scripting",
+    "autoUpdateInterval": 3600
+  },
   "iconImage": "",
   "color": "rgba(65, 105, 225, 1.00)",
   "entry": "index.tsx",
