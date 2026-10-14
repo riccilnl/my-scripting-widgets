@@ -41,6 +41,15 @@ jobs:
         run: python3 -B scripts/rime输入法/tests/create_startup_ab_previews.py
       - name: Verify immutable startup A/B controls
         run: python3 -B scripts/rime输入法/tests/verify_startup_ab_previews.py
+      - name: Upload startup A/B controls artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rime-startup-ab-controls-0.1.0
+          path: |
+            .git/perf-preview/Rime-startup-ab-full-deps-0.1.0.scripting
+            .git/perf-preview/Rime-startup-ab-minimal-deps-0.1.0.scripting
+          if-no-files-found: error
+          retention-days: 14
       - name: Commit diagnostic installation package only on preview branch
         run: |
           set -eu
