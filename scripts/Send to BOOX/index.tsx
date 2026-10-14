@@ -299,6 +299,7 @@ function SettingsView(props: {
   onSessionChanged: (session: BooxSession | null) => void
   onLoginSucceeded: () => void
 }) {
+  const dismiss = Navigation.useDismiss()
   const [region, setRegion] = useState<BooxRegion>(loadRegion())
   const [email, setEmail] = useState(loadEmail())
   const [code, setCode] = useState("")
@@ -466,6 +467,9 @@ function SettingsView(props: {
           {cloudStatus ? <Text>{cloudStatus}</Text> : null}
         </Section>
       ) : null}
+      <Section>
+        <Button title="关闭" systemImage="xmark" action={dismiss} />
+      </Section>
     </Form>
   )
 }
@@ -473,14 +477,8 @@ function SettingsView(props: {
 function App() {
   const [session, setSession] = useState<BooxSession | null>(loadSession())
   const selection = useObservable<number>(session ? 0 : 2)
-  const dismiss = Navigation.useDismiss()
-
-  useEffect(() => {
-    if (selection.value === 3) dismiss()
-  }, [selection.value])
-
   return (
-    <TabView selection={selection} tabViewStyle="sidebarAdaptable">
+    <TabView selection={selection}>
       <Tab title="首页" systemImage="house.fill" value={0}>
         <NavigationStack>
           <HomeView session={session} />
@@ -497,10 +495,8 @@ function App() {
             session={session}
             onSessionChanged={setSession}
             onLoginSucceeded={() => selection.setValue(0)}
-          />        </NavigationStack>
-      </Tab>
-      <Tab title="退出" systemImage="xmark" value={3} tabPlacement="pinned">
-        <></>
+          />
+        </NavigationStack>
       </Tab>
     </TabView>
   )
@@ -509,7 +505,6 @@ function App() {
 async function run() {
   await Navigation.present({
     element: <App />,
-    modalPresentationStyle: "overFullScreen",
   })
   Script.exit()
 }

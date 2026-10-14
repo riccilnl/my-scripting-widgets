@@ -32,6 +32,13 @@ jobs:
       - name: Verify packaging utility
         run: node --test scripts/update_links.test.js
 
+      - name: Validate BOOX startup and sharing contracts
+        run: node --test "scripts/Send to BOOX/tests/startup.test.cjs"
+
+      - name: Bundle both TSX entrypoints
+        run: |
+          npx --yes esbuild@0.28.2 "scripts/Send to BOOX/index.tsx" "scripts/Send to BOOX/intent.tsx" --bundle --platform=neutral --external:scripting --jsx=transform --jsx-factory=createElement --jsx-fragment=Fragment --outdir="${{ runner.temp }}/boox-tsx-check"
+
       - name: Build Send to BOOX installer
         run: node scripts/update_links.js --project "Send to BOOX"
 
