@@ -13,12 +13,6 @@ test("startup has three nonempty tabs with ordinary presentation", () => {
   assert.match(source, /element: <App \/>/)
 })
 
-test("cloud uses a native searchable List with view-only backup protections", () => {
-  assert.match(source, /<List navigationTitle="云盘" searchable=/)
-  assert.match(source, /source === "push_message"/)
-  assert.match(source, /备用列表（只读）/)
-})
-
 test("manifest retains sharing and stable update subscription", () => {
   assert.equal(manifest.entry, "index.tsx")
   assert.equal(manifest.author.name, "Ricci")
@@ -34,20 +28,18 @@ test("home shows recent status and direct login", () => {
   assert.match(source, /<HomeView session=\{session\} onRequestLogin=\{\(\) => selection\.setValue\(2\)\}/)
 })
 
-test("cloud uses native search and separates error from empty content", () => {
-  assert.match(source, /searchable=\{\{ value: query, onChanged: setQuery, prompt: "搜索推送书名" \}\}/)
-  assert.match(source, /loading && !items\.length/)
-  assert.match(source, /loadError && !items\.length/)
-  assert.match(source, /title="重试读取"/)
-  assert.match(source, /暂无已推送的电子书/)
-  assert.match(source, /requestRef\.current/)
-  assert.match(source, /<CloudView session=\{session\} onRequestLogin=\{\(\) => selection\.setValue\(2\)\}/)
-})
-
 test("region switching confirms before clearing credentials", () => {
   const x = source.slice(source.indexOf("const changeRegion ="), source.indexOf("const sendCode ="))
   assert.match(x, /await Dialog\.confirm/)
   assert.match(x, /if \(!confirmed\) return/)
   assert.ok(x.indexOf("await Dialog.confirm") < x.indexOf("clearSession()"))
   assert.match(source, /登录信息保存在本设备的 iOS 钥匙串/)
+})
+
+test("cloud regression: preserve the 0.1.10 Form and simple refresh", () => {
+  assert.match(source, /<Form navigationTitle="云盘">/)
+  assert.match(source, /setStatus\(`正在读取 BOOX 推送列表…`\)/)
+  assert.match(source, /setLoading\(false\)/)
+  assert.doesNotMatch(source, /requestRef\.current/)
+  assert.doesNotMatch(source, /<List navigationTitle="云盘"/)
 })
