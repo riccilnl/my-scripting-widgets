@@ -1,0 +1,29 @@
+{
+  "description": "Send books directly to BOOX and manage the electronic-book Push List from a full-screen cloud tab.",
+  "intentInputTypes": [
+    "File URLs"
+  ],
+  "icon": "book.closed.fill",
+  "localizedNames": {
+    "zh": "发送到 BOOX",
+    "en": "Send to BOOX"
+  },
+  "version": "0.1.7",
+  "permissions": null,
+  "name": "Send to BOOX",
+  "runInApp": false,
+  "author": {
+    "homepage": null,
+    "name": "Ricci",
+    "email": null
+  },
+  "contributors": [],
+  "remoteResource": null,
+  "iconImage": "",
+  "color": "rgba(65, 105, 225, 1.00)",
+  "entry": "index.tsx",
+  "localizedDescriptions": {
+    "zh": "极简首页发送图书；云盘页管理 BOOX 电子书推送列表，支持搜索、刷新、重新推送和删除；设置页保留登录与云空间信息。",
+    "en": "Send books from a minimal home and manage the BOOX electronic-book Push List with search, refresh, re-push, and delete."
+  }
+}

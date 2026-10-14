@@ -1,0 +1,73 @@
+# Send to BOOX 0.1.7
+
+无需安装 BOOX Assistant，通过 BOOX Send2BOOX 云接口直接把本地文件推送到阅读器。
+
+## 使用
+
+1. 在 Scripting 中导入本脚本。
+2. 第一次打开脚本，选择与阅读器一致的 BOOX 服务器。
+3. 输入 BOOX 账号邮箱/手机号，获取验证码并登录。
+4. 之后可在脚本中“选择文件并发送”。
+5. 也可从 Files、Safari、微信等分享文件，选择 `Scripting -> 发送到 BOOX`。
+
+## 说明
+
+- Token / UID 存储于 iOS Keychain。
+- 地区、邮箱和最近发送记录存储于当前脚本私有 Storage。
+- 主脚本限制单文件 200 MB。
+- 分享扩展为了避免 iOS 扩展内存限制，将单文件限制为 80 MB；大文件请从脚本本体选择。
+- BOOX 接口为未公开 Web API，若服务端协议变化，需要同步更新脚本。
+
+## 0.1.7
+
+- 底部新增“云盘”：首页 / 云盘 / 设置 / 退出。
+- 云盘第一阶段只管理 BOOX `Push List` 电子书，不接入笔记。
+- 通过 `<uid>-MESSAGE` 的 Sync Gateway `_changes` 读取推送电子书列表。
+- 支持本地书名搜索和手动刷新。
+- 支持重新推送：刷新 OSS 下载签名 URL，并将原消息文档更新到新 revision 触发设备重新下载。
+- 支持永久删除：先删除 Sync Gateway 文档，再调用 `/api/1/push/message/batchDelete`；删除前必须二次确认。
+- 原有首页传书、批量凭据复用、登录、云空间和分享扩展逻辑保持不变。
+
+## 0.1.6
+
+- 首页收敛为单一“添加图书并发送”按钮、实时发送状态和发送历史，不再显示账号或服务器信息。
+- 设置页新增 BOOX 云空间：总容量、已用、剩余；优先读取账号接口，无法识别用量时只显示官方 10GB 总容量，不猜测已用/剩余。
+- 可选容量探测最多 5 秒，失败不会影响登录或传书。
+- 0.1.5 的上传、同步、推送和分享扩展链路保持不变。
+
+## 0.1.5
+
+- 修复 Observable.value 只读属性写入；程序化标签切换统一使用 setValue()。
+- 将 BOOX 登录失败与登录成功后的 UI 切换异常分开处理。
+
+## 0.1.4
+
+- 参考 `UI 3.0.scripting` 改为全屏三标签界面：首页 / 设置 / 退出。
+- 有本地登录态时默认进入首页；无登录态时默认进入设置。
+- 登录设置合并为一个模块：账号输入框右侧直接获取验证码，服务器选择紧随其后。
+- 多文件批量发送只获取一次 STS、Bucket 和 Sync Gateway 会话，同批文件复用上传上下文。
+- 分享扩展的多文件发送同步使用同一批次优化。
+- 登录凭据继续保存在脚本隔离的 Keychain，不降级到可被其他脚本读取的 Shared Storage。
+- Scripting 删除/替换脚本可能回收该脚本 Keychain，因此版本替换后可能需要重新登录。
+
+## 0.1.3
+
+- 修复 DocumentPicker 选择出的合法文件被 `statSync().type` 误判为“文件夹”的问题。
+- `statSync` 只用于提前识别明确目录与提前检查大小，不再要求 `type === "file"`。
+- 以 `Data.fromFile()` 能否成功读取作为文件有效性的最终依据，并用 `Data.size` 二次校验大小。
+- 同时兼容 `file:///...` 与 `file://localhost/...` 分享路径。
+- 不修改 BOOX 登录、OSS、Sync Gateway、saveAndPush 协议链路。
+
+## 0.1.2
+
+- 修正 Scripting 运行时 API 使用方式：Storage、Keychain、FileManager、Data、Crypto、UUID、fetch、DocumentPicker 使用官方运行时全局对象，不再从 `scripting` 模块错误命名导入。
+- 保留官方明确支持命名导入的 Path 与 Intent。
+- BOOX 推送协议保持 0.1.1 的已核实链路不变。
+
+## 0.1.1
+
+- 按当前 Send2BOOX 流程使用单次 `_bulk_docs` + `new_edits:false`。
+- `saveAndPush` 失败不再忽略。
+- OSS 签名链接有效期 10,000 秒。
+- 兼容 BOOX 存储桶返回 `region` 或 `aliEndpoint`。
+- 恢复文件选择后的 Security-Scoped Resources 释放。
