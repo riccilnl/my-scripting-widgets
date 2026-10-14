@@ -416,7 +416,7 @@ test("candidate view store publishes only visible changes and reuses stable list
 });
 
 test("candidate-only updates are isolated from keyboard root, preserving space swipe thresholds", () => {
-  const rootSource = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const rootSource = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const subscriber = fs.readFileSync(path.join(root,
     "keyboard/components/CandidateBarSubscriber.tsx"), "utf8");
   const bar = fs.readFileSync(path.join(root, "keyboard/components/CandidateBar.tsx"), "utf8");
@@ -484,7 +484,7 @@ test("nine-key pinyin choices are published only when displayed values change", 
 });
 
 test("T9 pinyin updates repaint subscribed column without changing frozen touch geometry", () => {
-  const rootSource = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const rootSource = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const subscriber = fs.readFileSync(path.join(root,
     "keyboard/components/T9PinyinColumnSubscriber.tsx"), "utf8");
   const column = fs.readFileSync(path.join(root,
@@ -674,7 +674,7 @@ test("Shift/Caps never mutates Rime and keyboard skips T9 publish for it", () =>
   assert.equal(second.shifted, true);
   assert.equal(probes, 0);
   assert.equal(peeks, 2);
-  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard.tsx"), "utf8");
   assert.match(root, /if \(!effect\.steps && command\.type !== "toggleShift"\) publish\(effect\.snapshot\);/);
 });
 
@@ -714,7 +714,7 @@ test("keyboard editor disposal releases large undo data and leaves host untouche
 });
 
 test("T9 publish reads runtime mode/schema once before Lua probe", () => {
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const start = source.indexOf("  function publish(snapshot:");
   const end = source.indexOf("\n  function dispatch(", start);
   const publish = source.slice(start, end);
@@ -757,7 +757,7 @@ test("keyboard metrics cache reuses geometry and invalidates on width/layout/ski
   assert.notEqual(changedSkin, changedSize);
   assert.notEqual(changedSkin.t9.leftWidth, changedSize.t9.leftWidth);
   assert.equal(resolver(760, changedLayout, changedGeometry), changedSkin);
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   assert.match(source, /const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> \| null>\(null\);/);
   assert.match(source, /metricsResolverRef\.current!\(width, props\.layout, skin\.geometry\)/);
 });
@@ -890,7 +890,7 @@ test("async failure of fallback transient feedback is consumed without unhandled
 });
 
 test("keyboard dismiss releases Core Haptics even when extension view stays mounted", () => {
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const start = source.indexOf("  function dismissKeyboard() {");
   const end = source.indexOf("\n  function renderKey(", start);
   const block = source.slice(start, end);
@@ -1101,7 +1101,7 @@ test("startup trace handles cancellation, storage failures, and bounds retained 
 });
 
 test("startup view diagnostics remain decoupled from production UI and avoid first-paint claims", () => {
-  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard.tsx"), "utf8");
   const settings = fs.readFileSync(path.join(__dirname, "../ui/settings/SettingsHomePage.tsx"), "utf8");
   const diagnostics = fs.readFileSync(path.join(__dirname, "../ui/settings/StartupDiagnosticsPage.tsx"), "utf8");
   assert.match(root, /const startupTrace = createStartupTrace\(\)/);
@@ -1198,7 +1198,7 @@ test("cancelled startup has no runtime ready milestone and closes no unused sess
 });
 
 test("unready Rime-bound input is marked once without storing text or replaying keys", () => {
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const segment = source.slice(source.indexOf("    const controller = controllerRef.current;"),
     source.indexOf("    const effect = controller.dispatch(command,"));
   assert.match(segment, /if \(!controller\)/);
@@ -1336,7 +1336,7 @@ test("toolbar off removes only idle header nodes, retaining candidate and status
 
 test("toolbar switch is persisted and does not change keyboard or candidate hit geometry", () => {
   const source = relative => fs.readFileSync(path.join(root, relative), "utf8");
-  const rootSource = source("keyboard/main.tsx");
+  const rootSource = source("keyboard.tsx");
   const settings = source("ui/settings/KeyboardSettingsPage.tsx");
   const editor = source("ui/settings/ToolbarSettingsPage.tsx");
   const runtime = source("keyboard/runtime/KeyboardRuntimeSettings.ts");

@@ -14,7 +14,7 @@ def verify():
     target = OUT / FILENAME
     source = source_files()
     assert Path(info["path"]) == target
-    assert info["project_name"] == PROJECT and info["version"] == "0.3.56"
+    assert info["project_name"] == PROJECT and info["version"] == "0.3.57"
     # Auto-update MUST fetch the mutable test branch, never an immutable Git SHA.
     assert REMOTE_ARCHIVE_URL.endswith("/" + REMOTE_ARCHIVE_NAME)
     assert "/refs/heads/perf/rime-startup-trace/" in REMOTE_ARCHIVE_URL
@@ -24,6 +24,10 @@ def verify():
     assert info["size_bytes"] == target.stat().st_size
     assert info["sha256"] == hashlib.sha256(target.read_bytes()).hexdigest()
     assert len(source) == info["entries"]
+    # Scripting requires root keyboard.tsx as the custom-keyboard entry.
+    assert "keyboard.tsx" in source and "keyboard/main.tsx" not in source
+    assert b'CustomKeyboard.present(' in source["keyboard.tsx"]
+    assert b'import "./keyboard/main"' not in source["keyboard.tsx"]
 
     official = official_files()
     for path in (
@@ -44,7 +48,7 @@ def verify():
             if relative == "script.json":
                 data = json.loads(actual)
                 baseline = json.loads(expected)
-                assert data["name"] == PROJECT and data["version"] == "0.3.56"
+                assert data["name"] == PROJECT and data["version"] == "0.3.57"
                 assert data["remoteResource"] == {
                     "url": REMOTE_ARCHIVE_URL,
                     "autoUpdateInterval": AUTO_UPDATE_INTERVAL

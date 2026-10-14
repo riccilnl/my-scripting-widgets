@@ -88,7 +88,7 @@ export function StartupDiagnosticsPage() {
         : <Section><Text foregroundStyle="secondaryLabel">还没有启动记录；请先开启诊断、唤起键盘，再回到此处刷新。</Text></Section>}
       {report ? <Section><Button title="清除上次记录" role="destructive" action={clear} /></Section> : null}
       <Section header={<Text>计时范围</Text>}>
-        <Text foregroundStyle="secondaryLabel">起点为 keyboard.tsx 静态模块加载完成后、main() 开始执行时；present.return 只表示呈现接口返回，不等于实际画面出现。startup.ready 表示完成首次 Rime 发布，不代表屏幕绘制完成。要比较视觉首帧、系统键盘切换和真正的输入响应延迟，仍需使用 iPhone 真机计时。</Text>
+        <Text foregroundStyle="secondaryLabel">起点为 keyboard.tsx 及其静态依赖加载完成后、main() 开始执行时；present.return 只表示呈现接口返回，不等于实际画面出现。startup.ready 表示完成首次 Rime 发布，不代表屏幕绘制完成。要比较视觉首帧、系统键盘切换和真正的输入响应延迟，仍需使用 iPhone 真机计时。</Text>
       </Section>
     </List>
   );
