@@ -170,34 +170,50 @@ function HomeView(props: {
 
 function CloudView(props: {
   session: BooxSession | null
+  onRequestLogin: () => void
 }) {
   const [items, setItems] = useState<BooxPushBook[]>([])
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState("")
+  const requestRef = useRef(0)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [status, setStatus] = useState("")
 
   const refresh = async () => {
+    const request = ++requestRef.current
     if (!props.session) {
       setItems([])
-      setStatus("请先在设置中登录 BOOX")
+      setLoaded(false)
+      setLoadError("")
+      setStatus("")
       return
     }
     setLoading(true)
-    setStatus("正在读取 BOOX 推送列表…")
+    setLoadError("")
+    setStatus("")
     try {
       const books = await listPushBooks()
+      if (request !== requestRef.current) return
       setItems(books)
-      setStatus(books.length ? `已读取 ${books.length} 本电子书` : "云端推送列表为空")
+      setLoaded(true)
     } catch (error) {
-      setStatus(`读取失败：${friendlyError(error)}`)
+      if (request !== requestRef.current) return
+      const reason = friendlyError(error)
+      setLoadError(reason)
+      setStatus("刷新失败：" + reason)
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) setLoading(false)
     }
   }
 
   useEffect(() => {
+    setItems([])
+    setQuery("")
+    setLoaded(false)
     void refresh()
+    return () => { requestRef.current += 1 }
   }, [props.session?.token, props.session?.region])
 
   const repush = async (item: BooxPushBook) => {
@@ -236,7 +252,7 @@ function CloudView(props: {
       setItems((current) => current.filter((value) => value.id !== item.id))
       setStatus(`已删除：${item.name}`)
     } catch (error) {
-      setStatus(`删除失败：${friendlyError(error)}`)
+      setStatus(`删除状态尚未确认：${friendlyError(error)}。请刷新列表核对，不要重复删除。`)
     } finally {
       setBusyId(null)
     }
@@ -248,29 +264,34 @@ function CloudView(props: {
     : items
 
   return (
-    <Form navigationTitle="云盘">
+    <Form navigationTitle="云盘" searchable={{ value: query, onChanged: setQuery, prompt: "搜索推送书名" }}>
       <Section>
-        <HStack spacing={8}>
-          <TextField
-            title="搜索电子书"
-            value={query}
-            onChanged={setQuery}
-            prompt="书名"
-          />
-          <Button
-            title="刷新"
-            systemImage="arrow.clockwise"
-            disabled={loading || busyId !== null || !props.session}
-            action={refresh}
-          />
-        </HStack>
+        <Button
+          title="刷新推送列表"
+          systemImage="arrow.clockwise"
+          disabled={loading || busyId !== null || !props.session}
+          action={refresh}
+        />
         {loading ? <ProgressView /> : null}
+        {loading && items.length > 0 ? <Text>正在刷新，以下为上次读取的列表</Text> : null}
         {status ? <Text>{status}</Text> : null}
       </Section>
 
       <Section header={<Text>推送列表 · {visible.length}/{items.length}</Text>}>
         {!props.session ? (
-          <Text>请先在设置中登录 BOOX</Text>
+          <VStack alignment="leading" spacing={8}>
+            <Text>登录后可查看和管理已推送到 BOOX 的电子书。</Text>
+            <Button title="前往登录" systemImage="person.crop.circle" action={props.onRequestLogin} />
+          </VStack>
+        ) : loading && !items.length ? (
+          <Text>正在读取推送列表…</Text>
+        ) : loadError && !items.length ? (
+          <VStack alignment="leading" spacing={8}>
+            <Text>读取失败，云端文件未受影响。</Text>
+            <Button title="重试读取" systemImage="arrow.clockwise" action={refresh} />
+          </VStack>
+        ) : !loaded ? (
+          <Text>尚未读取推送列表</Text>
         ) : visible.length ? (
           visible.map((item) => (
             <HStack key={item.id} spacing={10}>
@@ -284,7 +305,7 @@ function CloudView(props: {
               {busyId === item.id ? <ProgressView /> : null}
               <Menu
                 buttonStyle="plain"
-                label={<Image systemName="ellipsis.circle" />}
+                label={<Image systemName="ellipsis.circle" accessibilityLabel={`更多操作：${item.name}`} />}
               >
                 <Button
                   title="重新推送"
@@ -303,7 +324,7 @@ function CloudView(props: {
             </HStack>
           ))
         ) : (
-          <Text>{keyword ? "没有匹配的电子书" : "暂无推送电子书"}</Text>
+          <Text>{keyword && items.length ? "没有匹配的电子书" : "暂无已推送的电子书"}</Text>
         )}
       </Section>
     </Form>
