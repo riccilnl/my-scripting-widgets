@@ -374,15 +374,22 @@ function SettingsView(props: {
     }
   }, [props.session?.token, props.session?.region])
 
-  const changeRegion = (next: BooxRegion) => {
-    if (next === region) return
-    setRegion(next)
-    saveRegion(next)
+  const changeRegion = async (next: BooxRegion) => {
+    if (next === region || busy) return
     if (props.session) {
+      const confirmed = await Dialog.confirm({
+        title: "切换 BOOX 服务器",
+        message: "切换服务器会退出当前账号，需要在新服务器重新登录。是否继续？",
+        cancelLabel: "取消",
+        confirmLabel: "切换并退出登录",
+      })
+      if (!confirmed) return
       clearSession()
       props.onSessionChanged(null)
-      setStatus("服务器已切换，请在新服务器重新登录")
+      setStatus("服务器已切换，请重新登录")
     }
+    setRegion(next)
+    saveRegion(next)
   }
 
   const sendCode = async () => {
@@ -448,7 +455,7 @@ function SettingsView(props: {
     <Form navigationTitle="设置">
       <Section
         header={<Text>BOOX 登录</Text>}
-        footer={<Text>账号 Token 与 UID 使用系统 Keychain 保存；替换/删除脚本可能导致该脚本的 Keychain 作用域被系统回收。</Text>}
+        footer={<Text>登录信息保存在本设备的 iOS 钥匙串中；重装脚本可能需要重新登录。</Text>}
       >
         {props.session ? (
           <>
@@ -456,7 +463,7 @@ function SettingsView(props: {
             <Picker
               title="服务器"
               value={region}
-              onChanged={(value: unknown) => changeRegion(value as BooxRegion)}
+              onChanged={(value: unknown) => { void changeRegion(value as BooxRegion) }}
               pickerStyle="navigationLink"
             >
               <Text tag="cn">中国服务器</Text>
@@ -468,20 +475,20 @@ function SettingsView(props: {
           </>
         ) : (
           <>
-            <HStack spacing={8}>
-              <TextField title="邮箱或手机号" value={email} onChanged={setEmail} />
-              <Button title="获取验证码" disabled={busy || !email.trim()} action={sendCode} />
-            </HStack>
             <Picker
               title="服务器"
               value={region}
-              onChanged={(value: unknown) => changeRegion(value as BooxRegion)}
+              onChanged={(value: unknown) => { void changeRegion(value as BooxRegion) }}
               pickerStyle="navigationLink"
             >
               <Text tag="cn">中国服务器</Text>
               <Text tag="us">美国 / 全球服务器</Text>
               <Text tag="eu">欧洲服务器</Text>
             </Picker>
+            <HStack spacing={8}>
+              <TextField title="邮箱或手机号" value={email} onChanged={setEmail} />
+              <Button title="获取验证码" disabled={busy || !email.trim()} action={sendCode} />
+            </HStack>
             <SecureField title="验证码" value={code} onChanged={setCode} />
             <Button
               title="登录"
