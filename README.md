@@ -72,6 +72,7 @@ node scripts/update_links.js
 - [IP检测](https://github.com/riccilnl/my-scripting-widgets/raw/main/IP%E6%A3%80%E6%B5%8B.scripting)
 - [Navidrome播放器](https://github.com/riccilnl/my-scripting-widgets/raw/main/Navidrome%E6%92%AD%E6%94%BE%E5%99%A8.scripting)
 - [ScriptingPlus](https://github.com/riccilnl/my-scripting-widgets/raw/main/ScriptingPlus.scripting)
+- [Send to BOOX](https://github.com/riccilnl/my-scripting-widgets/raw/main/Send%20to%20BOOX.scripting)
 - [rime输入法](https://github.com/riccilnl/my-scripting-widgets/raw/main/rime%E8%BE%93%E5%85%A5%E6%B3%95.scripting)
 - [新浪美股](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E6%96%B0%E6%B5%AA%E7%BE%8E%E8%82%A1.scripting)
 - [财联社](https://github.com/riccilnl/my-scripting-widgets/raw/main/%E8%B4%A2%E8%81%94%E7%A4%BE.scripting)
