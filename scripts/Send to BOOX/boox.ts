@@ -1,5 +1,5 @@
 import { Path } from "scripting"
-import { BOOX_PUSH_PAGE_SIZE, normalizeBooxTime, parseChangesPage, type BooxChangesPage } from "./cloud-pagination"
+import { normalizeBooxTime, sortBooksLatest } from "./cloud-sort"
 import { readWithCloudRecovery } from "./cloud-recovery"
 
 export type BooxRegion = "cn" | "us" | "eu"
@@ -1055,25 +1055,30 @@ function pushBookFromDoc(doc: Record<string, any>): BooxPushBook | null {
 }
 
 /** One page of the versioned Sync Gateway changes feed; all writes retain _rev metadata. */
-export async function listPushBooksPage(
-  since: string | null = null,
-  onRecovery?: () => void,
-  pageSize: number = BOOX_PUSH_PAGE_SIZE,
-): Promise<BooxChangesPage> {
+/** A single complete _changes read, preserving the proven 0.1.13 ordering
+ * contract: collect, sort, then publish once. 504 recovery is unchanged.
+ */
+export async function listPushBooks(onRecovery?: () => void): Promise<BooxPushBook[]> {
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
-  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) throw new Error("无效的云盘分页大小")
   const channel = encodeURIComponent(session.uid + "-MESSAGE")
   const path = "/_changes?filter=sync_gateway/bychannel&channels=" + channel +
-    "&include_docs=true&active_only=true&limit=" + pageSize +
-    "&style=main_only" + (since === null ? "" : "&since=" + encodeURIComponent(since))
+    "&include_docs=true&active_only=true&limit=10000&style=main_only"
 
   return readWithCloudRecovery(
     async () => {
-      // Each attempt obtains its own fresh Sync Gateway cookie.
       const sync = await getSyncSession(session)
       const payload = await syncGatewayJSON(session, sync, path)
-      return parseChangesPage(payload, since, pageSize, pushBookFromDoc)
+      if (!Array.isArray(payload?.results)) {
+        throw new Error("BOOX 未返回有效的云盘变更列表")
+      }
+      const byId = new Map<string, BooxPushBook>()
+      for (const row of payload.results) {
+        if (!row?.doc || row.deleted || row.removed) continue
+        const book = pushBookFromDoc(row.doc)
+        if (book) byId.set(book.id, book)
+      }
+      return sortBooksLatest([...byId.values()])
     },
     async () => {
       const me = await booxJSON(session.region, "/api/1/users/me", { token: session.token })
