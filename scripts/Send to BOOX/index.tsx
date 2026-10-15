@@ -136,6 +136,9 @@ function HomeView(props: {
         <Button
           title="添加图书并发送"
           systemImage="plus.circle.fill"
+          frame={{ maxWidth: "infinity", minHeight: 138 }}
+          buttonStyle="borderedProminent"
+          controlSize="large"
           disabled={busy || !props.session}
           action={chooseAndSend}
         />
