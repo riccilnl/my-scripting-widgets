@@ -38,8 +38,8 @@ test("region switching confirms before clearing credentials", () => {
 
 test("cloud retains the working Form and loads additional pages lazily", () => {
   assert.match(source, /<Form navigationTitle="云盘">/)
-  assert.match(source, /listPushBooksPage\(null\)/)
-  assert.match(source, /listPushBooksPage\(cursor\)/)
+  assert.match(source, /listPushBooksPage\(null, /)
+  assert.match(source, /listPushBooksPage\(cursor, /)
   assert.match(source, /mergeChanges\(current, page\.items\)/)
   assert.match(source, /onAppear=\{\(\) => \{ void loadMore\(false\) \}\}/)
   assert.match(source, /重试加载更多/)
