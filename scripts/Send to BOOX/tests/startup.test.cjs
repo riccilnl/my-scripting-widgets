@@ -48,3 +48,12 @@ test("cloud retains the working Form and loads additional pages lazily", () => {
   assert.match(source, /state\.retryRequired = true/)
   assert.doesNotMatch(source, /<List navigationTitle="云盘"/)
 })
+
+test("gateway 504 recovery provides visible status and keeps original cloud view", () => {
+  assert.match(source, /listPushBooksPage\(null, \(\) => \{/)
+  assert.match(source, /网关暂时超时，正在检查登录状态并重试/)
+  assert.match(source, /listPushBooksPage\(cursor, \(\) => \{/)
+  assert.match(source, /下一批加载超时，正在检查登录状态并重试/)
+  assert.match(source, /state\.generation === generation/)
+  assert.doesNotMatch(source, /<List navigationTitle="云盘"/)
+})
