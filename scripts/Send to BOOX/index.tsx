@@ -340,11 +340,11 @@ function CloudView(props: {
     setStatus(`正在重新推送：${item.name}`)
     try {
       const updated = await repushPushBook(item)
-      setItems((current) =>
-        current
-          .map((value) => (value.id === updated.id ? updated : value))
-          .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)),
-      )
+      pager.current.books = mergeChanges(pager.current.books, [updated])
+      setItems(pager.current.books)
+      setSearchResults((current) => sortBooksLatest(
+        current.map(value => value.id === updated.id ? updated : value),
+      ))
       setStatus(`已重新推送：${item.name}`)
     } catch (error) {
       setStatus(`重新推送失败：${friendlyError(error)}`)
@@ -367,7 +367,10 @@ function CloudView(props: {
     setStatus(`正在删除：${item.name}`)
     try {
       await deletePushBook(item)
-      setItems((current) => current.filter((value) => value.id !== item.id))
+      pager.current.deletedIds.add(item.id)
+      pager.current.books = pager.current.books.filter(value => value.id !== item.id)
+      setItems(pager.current.books)
+      setSearchResults((current) => current.filter(value => value.id !== item.id))
       setStatus(`已删除：${item.name}`)
     } catch (error) {
       setStatus(`删除失败：${friendlyError(error)}`)
@@ -376,83 +379,121 @@ function CloudView(props: {
     }
   }
 
-  const keyword = query.trim().toLowerCase()
-  const visible = keyword
-    ? items.filter((item) => item.name.toLowerCase().includes(keyword))
-    : items
+  const visible = searchStage === "results" ? searchResults : items
 
   return (
-    <Form navigationTitle="云盘">
+    <Form
+      navigationTitle="云盘"
+      toolbar={
+        <Toolbar>
+          <ToolbarItem placement="topBarTrailing">
+            <Button
+              title="刷新"
+              systemImage="arrow.clockwise"
+              disabled={loading || busyId !== null || !props.session}
+              action={refresh}
+            />
+          </ToolbarItem>
+        </Toolbar>
+      }
+    >
       <Section>
         <HStack spacing={8}>
           <TextField
             title="搜索电子书"
             value={query}
             onChanged={setQuery}
-            prompt="书名"
+            prompt="输入书名"
           />
           <Button
-            title="刷新"
-            systemImage="arrow.clockwise"
-            disabled={loading || loadingMore || busyId !== null || !props.session}
-            action={refresh}
+            title="搜索"
+            systemImage="magnifyingglass"
+            disabled={!props.session || searchStage === "searching"}
+            action={() => { void runSearch() }}
           />
         </HStack>
-        {loading ? <ProgressView /> : null}
-        {loading && items.length > 0 ? <Text>正在刷新，保留之前已加载的列表</Text> : null}
-        {status ? <Text>{status}</Text> : null}
       </Section>
 
-      <Section header={<Text>推送列表 · {visible.length}/{items.length}{hasMore ? " · 尚未全部载入" : ""}</Text>}>
-        {keyword && hasMore ? <Text font="caption" foregroundStyle="secondaryLabel">搜索仅覆盖已加载的图书，加载更多可扩大范围。</Text> : null}
-        {!props.session ? (
-          <Button title="前往登录" systemImage="person.crop.circle" action={props.onRequestLogin} />
-        ) : visible.length ? (
-          visible.map((item) => (
-            <HStack key={item.id} spacing={10}>
-              <VStack alignment="leading" spacing={3}>
-                <Text>{item.name}</Text>
-                <Text font="caption" foregroundStyle="secondaryLabel">
-                  {formatBytes(item.size)} · {formatRecentTime(item.updatedAt || item.createdAt)}
-                </Text>
-              </VStack>
-              <Spacer />
-              {busyId === item.id ? <ProgressView /> : null}
-              <Menu
-                buttonStyle="plain"
-                label={<Image systemName="ellipsis.circle" />}
-              >
-                <Button
-                  title="重新推送"
-                  systemImage="paperplane"
-                  disabled={busyId !== null}
-                  action={() => repush(item)}
-                />
-                <Button
-                  title="删除"
-                  systemImage="trash"
-                  role="destructive"
-                  disabled={busyId !== null}
-                  action={() => remove(item)}
-                />
-              </Menu>
-            </HStack>
-          ))
-        ) : (
-          <Text>{loading ? "正在读取首批文件…" : hasMore ? "当前批次暂无匹配图书，继续加载可查找更多" : keyword ? "没有匹配的电子书" : "暂无推送电子书"}</Text>
-        )}
-      </Section>
-      {hasMore && props.session ? (
+      {searchStage === "searching" ? (
         <Section>
-          {pageError ? <Text>加载下一批失败：{pageError}。已有列表不受影响。</Text> : null}
+          <VStack alignment="center" spacing={10}>
+            <ProgressView />
+            <Text>搜索中…</Text>
+          </VStack>
+        </Section>
+      ) : searchStage === "error" ? (
+        <Section>
+          <Text>搜索失败：{searchError}</Text>
+          <Button title="重试搜索" systemImage="arrow.clockwise" action={() => { void runSearch() }} />
+        </Section>
+      ) : (
+        <Section>
+          {!props.session ? (
+            <Button title="前往登录" systemImage="person.crop.circle" action={props.onRequestLogin} />
+          ) : loading && !loaded ? (
+            <VStack alignment="leading" spacing={8}>
+              <ProgressView />
+              <Text>正在读取云盘图书…</Text>
+            </VStack>
+          ) : loadError ? (
+            <VStack alignment="leading" spacing={8}>
+              <Text>云盘读取失败：{loadError}</Text>
+              <Button title="重试读取" systemImage="arrow.clockwise" action={refresh} />
+            </VStack>
+          ) : visible.length > 0 ? (
+            visible.map((item) => (
+              <HStack key={item.id} spacing={10}>
+                <VStack alignment="leading" spacing={3}>
+                  <Text>{item.name}</Text>
+                  <Text font="caption" foregroundStyle="secondaryLabel">
+                    {formatBytes(item.size)} · {formatRecentTime(item.updatedAt || item.createdAt)}
+                  </Text>
+                </VStack>
+                <Spacer />
+                {busyId === item.id ? <ProgressView /> : null}
+                <Menu
+                  buttonStyle="plain"
+                  label={<Image systemName="ellipsis.circle" />}
+                >
+                  <Button
+                    title="重新推送"
+                    systemImage="paperplane"
+                    disabled={busyId !== null}
+                    action={() => repush(item)}
+                  />
+                  <Button
+                    title="删除"
+                    systemImage="trash"
+                    role="destructive"
+                    disabled={busyId !== null}
+                    action={() => remove(item)}
+                  />
+                </Menu>
+              </HStack>
+            ))
+          ) : (
+            <Text>{searchStage === "results" ? "没有匹配的电子书" : "暂无推送电子书"}</Text>
+          )}
+          {status && !loading ? <Text font="caption" foregroundStyle="secondaryLabel">{status}</Text> : null}
+        </Section>
+      )}
+
+      {searchStage === "browse" && scanning ? (
+        <Section>
+          <HStack spacing={8}>
+            <ProgressView />
+            <Text font="caption" foregroundStyle="secondaryLabel">正在整理完整书库，按最新时间排序…</Text>
+          </HStack>
+        </Section>
+      ) : null}
+      {searchStage === "browse" && hasMore && !scanning && scanError ? (
+        <Section>
+          <Text>{scanError}</Text>
           <Button
-            title={pageError ? "重试加载更多" : loadingMore ? "正在加载更多…" : "加载更多"}
-            systemImage="chevron.down"
-            disabled={loading || loadingMore || busyId !== null}
-            onAppear={() => { void loadMore(false) }}
-            action={() => { void loadMore(true) }}
+            title="继续整理书库"
+            systemImage="arrow.clockwise"
+            action={() => { void scanRemaining(pager.current.generation) }}
           />
-          {loadingMore ? <ProgressView /> : null}
         </Section>
       ) : null}
     </Form>
