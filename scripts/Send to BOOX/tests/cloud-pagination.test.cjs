@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const { BOOX_PUSH_PAGE_SIZE, parseChangesPage, mergeChanges } = require(process.env.BOOX_PAGINATION_MODULE)
+const { BOOX_PUSH_PAGE_SIZE, parseChangesPage, mergeChanges, normalizeBooxTime, sortBooksLatest, searchCloudBooks } = require(process.env.BOOX_PAGINATION_MODULE)
 const book = (id, updatedAt = 1) => ({
   id, rev: "1-rev", name: id + ".pdf", size: 1, createdAt: 1,
   updatedAt, ext: "pdf", objectKey: "x", doc: {}, content: {},
@@ -53,4 +53,32 @@ test("object cursors stay JSON opaque; deleted records are excluded", () => {
   const page = parseChangesPage({ results: rows, last_seq: cursor }, null, 50, decode)
   assert.equal(page.nextCursor, JSON.stringify(cursor))
   assert.equal(page.items.length, 0)
+})
+
+test("BOOX timestamps normalize Unix seconds, milliseconds and ISO strings", () => {
+  assert.equal(normalizeBooxTime(1700000000), 1700000000000)
+  assert.equal(normalizeBooxTime("1700000000"), 1700000000000)
+  assert.equal(normalizeBooxTime(1700000000000), 1700000000000)
+  assert.equal(normalizeBooxTime("2024-01-01T00:00:00.000Z"), Date.parse("2024-01-01T00:00:00.000Z"))
+  assert.equal(normalizeBooxTime("not-a-date"), 0)
+  assert.equal(normalizeBooxTime(null), 0)
+})
+
+test("later change pages containing newer books move to top in global time sort", () => {
+  const first = [book("old-1", 1700000000000), book("old-2", 1700100000000)]
+  const next = [book("new-1", 1800000000000), book("new-2", 1800100000000)]
+  const merged = mergeChanges(first, next)
+  assert.deepEqual(merged.map(x => x.id), ["new-2", "new-1", "old-2", "old-1"])
+  assert.deepEqual(sortBooksLatest(first).map(x => x.id), ["old-2", "old-1"])
+})
+
+test("search only consumes complete library array and returns sorted matches", () => {
+  const books = [
+    { ...book("alice", 2), name: "Alpha Story.pdf" },
+    { ...book("beta", 5), name: "unrelated.epub" },
+    { ...book("gamma", 9), name: "ALPHA Newest.epub" },
+  ]
+  assert.deepEqual(searchCloudBooks(books, "  alpha ").map(x => x.id), ["gamma", "alice"])
+  assert.deepEqual(searchCloudBooks(books, "zzz"), [])
+  assert.deepEqual(searchCloudBooks(books, "").map(x => x.id), ["gamma", "beta", "alice"])
 })
