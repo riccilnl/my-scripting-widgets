@@ -212,7 +212,9 @@ function CloudView(props: {
     setLoading(true)
     setStatus("正在读取首批推送记录…")
     try {
-      const page = await listPushBooksPage(null)
+      const page = await listPushBooksPage(null, () => {
+        if (state.generation === generation) setStatus("BOOX 网关暂时超时，正在检查登录状态并重试…")
+      })
       if (state.generation !== generation) return
       state.cursor = page.nextCursor
       state.finished = page.nextCursor === null
@@ -243,7 +245,9 @@ function CloudView(props: {
     setPageError("")
     setLoadingMore(true)
     try {
-      const page = await listPushBooksPage(cursor)
+      const page = await listPushBooksPage(cursor, () => {
+        if (state.generation === generation) setStatus("下一批加载超时，正在检查登录状态并重试…")
+      })
       if (state.generation !== generation) return
       state.cursor = page.nextCursor
       state.finished = page.nextCursor === null
