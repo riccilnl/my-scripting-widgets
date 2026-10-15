@@ -15,6 +15,8 @@ import {
   Tab,
   TabView,
   Text,
+  Toolbar,
+  ToolbarItem,
   TextField,
   VStack,
   useEffect,
@@ -45,7 +47,7 @@ import {
   listPushBooksPage,
   repushPushBook,
 } from "./boox"
-import { mergeChanges } from "./cloud-pagination"
+import { mergeChanges, searchCloudBooks, sortBooksLatest } from "./cloud-pagination"
 
 function formatRecentTime(value: number): string {
   const date = new Date(value)
@@ -179,99 +181,156 @@ function CloudView(props: {
   const [items, setItems] = useState<BooxPushBook[]>([])
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState("")
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState("")
+  const [hasMore, setHasMore] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [status, setStatus] = useState("")
+  const [searchStage, setSearchStage] = useState<"browse" | "searching" | "results" | "error">("browse")
+  const [searchResults, setSearchResults] = useState<BooxPushBook[]>([])
+  const [searchError, setSearchError] = useState("")
 
-  // A synchronous lock and generation counter guard onAppear pagination.
+  const searchRequest = useRef(0)
   const pager = useRef({
     generation: 0,
     cursor: null as string | null,
-    busy: false,
-    finished: true,
-    retryRequired: false,
+    books: [] as BooxPushBook[],
+    deletedIds: new Set<string>(),
+    firstPromise: null as Promise<void> | null,
+    scanPromise: null as Promise<void> | null,
+    loadError: "",
+    scanError: "",
   })
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
-  const [pageError, setPageError] = useState("")
+
+  // _changes is an ascending sequence stream. Only the complete scan can
+  // establish global newest-first order. Show the first page while scanning.
+  const scanRemaining = async (generation: number): Promise<void> => {
+    const state = pager.current
+    if (state.generation !== generation || !state.cursor) return
+    if (state.scanPromise) return state.scanPromise
+
+    const task = (async () => {
+      setScanning(true)
+      setScanError("")
+      state.scanError = ""
+      try {
+        let pages = 0
+        while (state.generation === generation && state.cursor && pages < 50) {
+          const cursor = state.cursor
+          const page = await listPushBooksPage(cursor, undefined, 200)
+          if (state.generation !== generation) return
+          state.cursor = page.nextCursor
+          state.books = mergeChanges(
+            state.books,
+            page.items.filter(item => !state.deletedIds.has(item.id)),
+          )
+          setItems(state.books)
+          setHasMore(state.cursor !== null)
+          pages++
+        }
+        if (state.generation !== generation) return
+        if (state.cursor) {
+          state.scanError = "记录超过本轮扫描上限，可继续加载；当前排序尚未覆盖全库"
+          setScanError(state.scanError)
+        }
+      } catch (error) {
+        if (state.generation !== generation) return
+        state.scanError = friendlyError(error)
+        setScanError(state.scanError)
+      } finally {
+        if (state.generation === generation) {
+          state.scanPromise = null
+          setScanning(false)
+        }
+      }
+    })()
+    state.scanPromise = task
+    await task
+  }
 
   const refresh = async () => {
     const state = pager.current
     const generation = ++state.generation
+    searchRequest.current++
     state.cursor = null
-    state.busy = true
-    state.finished = false
-    state.retryRequired = false
-    setPageError("")
+    state.books = []
+    state.deletedIds = new Set<string>()
+    state.firstPromise = null
+    state.scanPromise = null
+    state.loadError = ""
+    state.scanError = ""
+    setItems([])
+    setLoaded(false)
+    setLoading(false)
+    setScanning(false)
     setHasMore(false)
-    setLoadingMore(false)
-    if (!props.session) {
-      setItems([])
-      setStatus("请先在设置中登录 BOOX")
-      state.finished = true
-      state.busy = false
-      setLoading(false)
-      return
-    }
+    setLoadError("")
+    setScanError("")
+    setStatus("")
+    setSearchStage("browse")
+    setSearchResults([])
+    setSearchError("")
+    setQuery("")
+    if (!props.session) return
     setLoading(true)
-    setStatus("正在读取首批推送记录…")
-    try {
-      const page = await listPushBooksPage(null, () => {
-        if (state.generation === generation) setStatus("BOOX 网关暂时超时，正在检查登录状态并重试…")
-      })
-      if (state.generation !== generation) return
-      state.cursor = page.nextCursor
-      state.finished = page.nextCursor === null
-      setItems(page.items)
-      setHasMore(!state.finished)
-      setStatus(state.finished ? "已读取全部推送记录" : "首批已显示，向下滚动继续读取")
-    } catch (error) {
-      if (state.generation !== generation) return
-      state.finished = true
-      setHasMore(false)
-      setStatus("读取失败：" + friendlyError(error))
-    } finally {
-      if (state.generation === generation) {
-        state.busy = false
-        setLoading(false)
+
+    const task = (async () => {
+      try {
+        const page = await listPushBooksPage(null)
+        if (state.generation !== generation) return
+        state.cursor = page.nextCursor
+        state.books = sortBooksLatest(page.items)
+        setItems(state.books)
+        setLoaded(true)
+        setHasMore(state.cursor !== null)
+        if (state.cursor) void scanRemaining(generation)
+      } catch (error) {
+        if (state.generation !== generation) return
+        state.loadError = friendlyError(error)
+        setLoadError(state.loadError)
+      } finally {
+        if (state.generation === generation) setLoading(false)
       }
-    }
+    })()
+    state.firstPromise = task
+    await task
   }
 
-  const loadMore = async (retry = false) => {
-    const state = pager.current
-    if (!props.session || state.busy || state.finished || !state.cursor ||
-        (state.retryRequired && !retry)) return
-    const generation = state.generation
-    const cursor = state.cursor
-    state.busy = true
-    state.retryRequired = false
-    setPageError("")
-    setLoadingMore(true)
+  // Pressing Search swaps out the cloud list immediately. No live filtering,
+  // duplicate results section, or intermediate partial-result flash.
+  const runSearch = async () => {
+    const term = query.trim()
+    const operation = ++searchRequest.current
+    const generation = pager.current.generation
+    if (!term) {
+      setSearchStage("browse")
+      setSearchResults([])
+      setSearchError("")
+      return
+    }
+    setSearchStage("searching")
+    setSearchResults([])
+    setSearchError("")
     try {
-      const page = await listPushBooksPage(cursor, () => {
-        if (state.generation === generation) setStatus("下一批加载超时，正在检查登录状态并重试…")
-      })
-      if (state.generation !== generation) return
-      state.cursor = page.nextCursor
-      state.finished = page.nextCursor === null
-      setItems((current) => mergeChanges(current, page.items))
-      setHasMore(!state.finished)
-      setStatus(state.finished ? "已读取全部推送记录" : "已载入更多，可继续向下滚动")
+      const state = pager.current
+      if (state.firstPromise) await state.firstPromise
+      if (state.generation !== generation || searchRequest.current !== operation) return
+      if (state.loadError) throw new Error(state.loadError)
+      if (state.cursor) await scanRemaining(generation)
+      if (state.generation !== generation || searchRequest.current !== operation) return
+      if (state.cursor) throw new Error(state.scanError || "云盘还未完整载入，请重试搜索")
+      setSearchResults(searchCloudBooks(state.books, term))
+      setSearchStage("results")
     } catch (error) {
-      if (state.generation !== generation) return
-      state.retryRequired = true
-      setPageError(friendlyError(error))
-    } finally {
-      if (state.generation === generation) {
-        state.busy = false
-        setLoadingMore(false)
-      }
+      if (pager.current.generation !== generation || searchRequest.current !== operation) return
+      setSearchError(friendlyError(error))
+      setSearchStage("error")
     }
   }
 
   useEffect(() => {
-    setItems([])
-    setQuery("")
     void refresh()
   }, [props.session?.token, props.session?.region])
 
