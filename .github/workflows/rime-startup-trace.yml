@@ -50,6 +50,21 @@ jobs:
             .git/perf-preview/Rime-startup-ab-minimal-deps-0.1.0.scripting
           if-no-files-found: error
           retention-days: 14
+      - name: Build independent compiler payload experiment
+        run: python3 -B scripts/rime输入法/tests/create_compiler_payload_preview.py
+      - name: Verify compiler payload source, archive and import graph
+        run: |
+          python3 -B scripts/rime输入法/tests/verify_compiler_payload_preview.py
+          python3 -B scripts/rime输入法/tests/audit_startup_compile_graph.py
+      - name: Verify compiler payload T9 behavior under VM
+        run: node --test scripts/rime输入法/tests/verify_compiler_payload_runtime.cjs
+      - name: Upload compiler payload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: rime-compiler-payload-0.3.58
+          path: .git/perf-preview/Rime-compiler-payload-0.3.58-preview.scripting
+          if-no-files-found: error
+          retention-days: 14
       - name: Commit diagnostic installation package only on preview branch
         run: |
           set -eu
@@ -134,9 +149,31 @@ jobs:
           Static imports may be optimized by the Scripting runtime.
           See scripts/rime输入法/docs/STARTUP_FIRST_FRAME_BASELINE_2026-10-15.md.
           ABEOF
+          mkdir -p previews/rime-compiler-payload-20261015
+          cp .git/perf-preview/Rime-compiler-payload-0.3.58-preview.scripting previews/rime-compiler-payload-20261015/
+          (cd previews/rime-compiler-payload-20261015 &&
+            sha256sum Rime-compiler-payload-0.3.58-preview.scripting > SHA256SUMS.txt)
+          cat > previews/rime-compiler-payload-20261015/README.md <<'CP_EOF'
+          # Compiler payload experiment 0.3.58
+
+          Independent frozen test keyboard with the ORIGINAL keyboard.tsx.
+          The T9 Lua source was moved out of the eager TS static import graph
+          into an identically-versioned package file. The verified normal
+          T9 fast path never reads the packaged asset; stale repair does.
+
+          Eager TS sources: baseline 60 modules / 270321 bytes;
+          this experiment 59 modules / 245562 bytes (-24759, 9.16%).
+          Those figures are source sizes, NOT iPhone compile timings.
+
+          Test external-keyboard activation to Scripting, first frame,
+          typing, 26-key and T9. Asset read compatibility and any startup
+          improvement remain UNVERIFIED on a real iPhone. No auto-update.
+          Never replace the original keyboard or 0.3.57 latest URL.
+          See scripts/rime输入法/docs/COMPILER_PAYLOAD_0.3.58_2026-10-15.md.
+          CP_EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- previews/rime-startup-20261013 previews/rime-startup-ab-20261014
+          git add -- previews/rime-startup-20261013 previews/rime-startup-ab-20261014 previews/rime-compiler-payload-20261015
           if ! git diff --cached --quiet; then
             git commit -m "build(rime): publish independent startup diagnostics preview"
             git push origin HEAD:refs/heads/perf/rime-startup-trace
