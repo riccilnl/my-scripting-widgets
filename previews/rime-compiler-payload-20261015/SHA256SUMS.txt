@@ -1,0 +1,1 @@
+94f048ad040cef5ddcb8691cef8430bb9aa7b9c51bbc3ffc36afc51a357eace6  Rime-compiler-payload-0.3.58-preview.scripting
