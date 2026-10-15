@@ -1,5 +1,5 @@
 import { Path } from "scripting"
-import { BOOX_PUSH_PAGE_SIZE, parseChangesPage, type BooxChangesPage } from "./cloud-pagination"
+import { BOOX_PUSH_PAGE_SIZE, normalizeBooxTime, parseChangesPage, type BooxChangesPage } from "./cloud-pagination"
 import { readWithCloudRecovery } from "./cloud-recovery"
 
 export type BooxRegion = "cn" | "us" | "eu"
@@ -1037,8 +1037,8 @@ function pushBookFromDoc(doc: Record<string, any>): BooxPushBook | null {
   const ext = String(format || Path.extname(name).replace(/^\./, "")).toLowerCase()
   const storage = ext ? content?.storage?.[ext]?.oss : null
   const sizeValue = Number(content.size ?? doc.size ?? storage?.size ?? 0)
-  const createdValue = Number(content.createdAt ?? doc.createdAt ?? 0)
-  const updatedValue = Number(content.updatedAt ?? doc.updatedAt ?? createdValue ?? 0)
+  const createdValue = normalizeBooxTime(content.createdAt ?? doc.createdAt ?? 0)
+  const updatedValue = normalizeBooxTime(content.updatedAt ?? doc.updatedAt ?? createdValue ?? 0)
 
   return {
     id: String(doc._id),
@@ -1058,12 +1058,14 @@ function pushBookFromDoc(doc: Record<string, any>): BooxPushBook | null {
 export async function listPushBooksPage(
   since: string | null = null,
   onRecovery?: () => void,
+  pageSize: number = BOOX_PUSH_PAGE_SIZE,
 ): Promise<BooxChangesPage> {
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) throw new Error("无效的云盘分页大小")
   const channel = encodeURIComponent(session.uid + "-MESSAGE")
   const path = "/_changes?filter=sync_gateway/bychannel&channels=" + channel +
-    "&include_docs=true&active_only=true&limit=" + BOOX_PUSH_PAGE_SIZE +
+    "&include_docs=true&active_only=true&limit=" + pageSize +
     "&style=main_only" + (since === null ? "" : "&since=" + encodeURIComponent(since))
 
   return readWithCloudRecovery(
@@ -1071,7 +1073,7 @@ export async function listPushBooksPage(
       // Each attempt obtains its own fresh Sync Gateway cookie.
       const sync = await getSyncSession(session)
       const payload = await syncGatewayJSON(session, sync, path)
-      return parseChangesPage(payload, since, BOOX_PUSH_PAGE_SIZE, pushBookFromDoc)
+      return parseChangesPage(payload, since, pageSize, pushBookFromDoc)
     },
     async () => {
       const me = await booxJSON(session.region, "/api/1/users/me", { token: session.token })
