@@ -44,7 +44,7 @@ import {
   type BooxCloudStorageInfo,
   type BooxPushBook,
   deletePushBook,
-  listPushBooksPage,
+  listPushBooks,
   repushPushBook,
 } from "./boox"
 import { searchCloudBooks, sortBooksLatest } from "./cloud-sort"
