@@ -45,10 +45,10 @@ jobs:
           npx --yes esbuild@0.28.2 "scripts/Send to BOOX/share-result.ts" --bundle --platform=node --format=cjs --outfile="${{ runner.temp }}/boox-share-result.cjs"
           BOOX_SHARE_RESULT_MODULE="${{ runner.temp }}/boox-share-result.cjs" node --test "scripts/Send to BOOX/tests/share-result.test.cjs"
 
-      - name: Verify BOOX changes pagination
+      - name: Verify BOOX single-snapshot time sorting
         run: |
-          npx --yes esbuild@0.28.2 "scripts/Send to BOOX/cloud-pagination.ts" --bundle --platform=node --format=cjs --outfile="${{ runner.temp }}/boox-cloud-pagination.cjs"
-          BOOX_PAGINATION_MODULE="${{ runner.temp }}/boox-cloud-pagination.cjs" node --test "scripts/Send to BOOX/tests/cloud-pagination.test.cjs"
+          npx --yes esbuild@0.28.2 "scripts/Send to BOOX/cloud-sort.ts" --bundle --platform=node --format=cjs --outfile="${{ runner.temp }}/boox-cloud-sort.cjs"
+          BOOX_SORT_MODULE="${{ runner.temp }}/boox-cloud-sort.cjs" node --test "scripts/Send to BOOX/tests/cloud-sort.test.cjs"
       - name: Validate BOOX gateway recovery
         run: |
           npx --yes esbuild@0.28.2 "scripts/Send to BOOX/cloud-recovery.ts" --bundle --platform=node --format=cjs --outfile="${{ runner.temp }}/boox-cloud-recovery.cjs"
@@ -67,7 +67,7 @@ jobs:
           folder = pathlib.Path("scripts/Send to BOOX")
           with zipfile.ZipFile("Send to BOOX.scripting") as archive:
               names = set(archive.namelist())
-              for name in ("boox.ts", "cloud-pagination.ts", "cloud-recovery.ts", "share-result.ts", "index.tsx", "intent.tsx", "README.md", "script.json"):
+              for name in ("boox.ts", "cloud-sort.ts", "cloud-recovery.ts", "share-result.ts", "index.tsx", "intent.tsx", "README.md", "script.json"):
                   target = "Send to BOOX/" + name
                   assert target in names, target
                   assert archive.read(target) == (folder / name).read_bytes(), target
