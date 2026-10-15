@@ -3,9 +3,10 @@
 from __future__ import annotations
 import json
 from pathlib import Path
-from create_perf_preview import OUT, source_files, write_package
+from create_perf_preview import OUT, write_package
+from create_compiler_payload_preview import transform
 
-FILENAME = "Rime-startup-trace-0.3.57-preview.scripting"
+FILENAME = "Rime-startup-trace-0.3.58-preview.scripting"
 REMOTE_ARCHIVE_NAME = "Rime-startup-trace-latest.zip"
 REMOTE_ARCHIVE_URL = (
     "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/"
@@ -17,9 +18,11 @@ PROJECT = "Rime启动诊断测试"
 
 
 def build():
-    files = source_files()
+    files, payload_audit = transform()
     assert "keyboard/runtime/StartupTrace.ts" in files
     assert "ui/settings/StartupDiagnosticsPage.tsx" in files
+    assert "core/rime/t9_bridge.lua" in files
+    assert "core/rime/T9BridgeAsset.ts" not in files
     metadata = json.loads(files["script.json"])
     assert metadata["version"] == "0.3.44"
     assert metadata.get("remoteResource") is None
@@ -31,13 +34,14 @@ def build():
         "autoUpdateInterval": AUTO_UPDATE_INTERVAL
     }
     files["script.json"] = (json.dumps(metadata, ensure_ascii=False, indent=2) + "\n").encode()
-    item = write_package(files, PROJECT, "Rime 启动诊断测试", "0.3.57", FILENAME,
+    item = write_package(files, PROJECT, "Rime 启动诊断测试", "0.3.58", FILENAME,
                          english_name="Rime Startup Diagnostics Test")
     # A stable .zip URL is explicitly supported by the official remote-resource API.
     # .scripting and .zip contain identical ZIP bytes for predictable validation.
     import shutil
     shutil.copyfile(OUT / FILENAME, OUT / REMOTE_ARCHIVE_NAME)
     assert (OUT / REMOTE_ARCHIVE_NAME).read_bytes() == (OUT / FILENAME).read_bytes()
+    item["payload_audit"] = payload_audit
     (OUT / "startup-manifest.json").write_text(json.dumps(item, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(item, ensure_ascii=False, indent=2))
     return item

@@ -155,3 +155,12 @@
 - 现有 JS trace 从 main() 内才开始，不含扩展激活、静态模块解析和系统首帧。录屏未提供给开发环境，尚无精确的比较毫秒数，不能声称性能修复。
 - 原生 toolbar/requestHeight 只是假设差异，不是已证原因；取消未发布的 W/T/H 原生选项控制方案，不扩大只看转圈有无的无效实验。
 - 正式 main 和既有预览 0.3.57、冻结 A/B 均保持不变。未来执行遵循 STARTUP_FIRST_FRAME_BASELINE_2026-10-15.md。
+
+## 0.3.58 Preview · 原自动更新订阅通道恢复（2026-10-15）
+
+- 用户报告其 iPhone 上原来的“Rime启动诊断测试”更新后仍为 0.3.57。根因：之前仅发布了名为“Rime编译负载实验”的独立 0.3.58 快照，并未更新原来的自动更新包。
+- 新的启动诊断测试 0.3.58 使用同样的编译负载实验代码，但保持原有项目名、固定可变下载地址 Rime-startup-trace-latest.zip 和 3600 秒检查间隔。
+- 每次构建同时发布 latest.zip、用户设备先前固定指向的可变历史别名 Rime-startup-trace-0.3.46-preview.scripting，以及新的定版快照 Rime-startup-trace-0.3.58-preview.scripting。
+- 0.3.57 的定版快照文件必须保持 SHA256 5fea010126cc97eda89cb1ba376d83b93dad636d29be33fe4554e7246e5ce97f，不随最新版本覆盖。它是回退依据。
+- 改动只在归档打包层，原有 keyboard.tsx、正式 main 均不改；原始九键 Lua 资源改为随包附带的静态文件，仅在九键桥修复时读取。
+- iPhone 是否确实下载到新包以设备 script.json 为准；Scripting 连接离线时不得声称手机已更新。第一次更新后应验收九键和 26 键，若资源读取路径不兼容，回退 0.3.57。
