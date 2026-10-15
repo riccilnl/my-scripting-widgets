@@ -19,6 +19,7 @@ import {
   VStack,
   useEffect,
   useObservable,
+  useRef,
   useState,
 } from "scripting"
 import {
@@ -41,9 +42,10 @@ import {
   type BooxCloudStorageInfo,
   type BooxPushBook,
   deletePushBook,
-  listPushBooks,
+  listPushBooksPage,
   repushPushBook,
 } from "./boox"
+import { mergeChanges } from "./cloud-pagination"
 
 function formatRecentTime(value: number): string {
   const date = new Date(value)
@@ -177,26 +179,92 @@ function CloudView(props: {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [status, setStatus] = useState("")
 
+  // A synchronous lock and generation counter guard onAppear pagination.
+  const pager = useRef({
+    generation: 0,
+    cursor: null as string | null,
+    busy: false,
+    finished: true,
+    retryRequired: false,
+  })
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [pageError, setPageError] = useState("")
+
   const refresh = async () => {
+    const state = pager.current
+    const generation = ++state.generation
+    state.cursor = null
+    state.busy = true
+    state.finished = false
+    state.retryRequired = false
+    setPageError("")
+    setHasMore(false)
+    setLoadingMore(false)
     if (!props.session) {
       setItems([])
       setStatus("请先在设置中登录 BOOX")
+      state.finished = true
+      state.busy = false
+      setLoading(false)
       return
     }
     setLoading(true)
-    setStatus("正在读取 BOOX 推送列表…")
+    setStatus("正在读取首批推送记录…")
     try {
-      const books = await listPushBooks()
-      setItems(books)
-      setStatus(books.length ? `已读取 ${books.length} 本电子书` : "云端推送列表为空")
+      const page = await listPushBooksPage(null)
+      if (state.generation !== generation) return
+      state.cursor = page.nextCursor
+      state.finished = page.nextCursor === null
+      setItems(page.items)
+      setHasMore(!state.finished)
+      setStatus(state.finished ? "已读取全部推送记录" : "首批已显示，向下滚动继续读取")
     } catch (error) {
-      setStatus(`读取失败：${friendlyError(error)}`)
+      if (state.generation !== generation) return
+      state.finished = true
+      setHasMore(false)
+      setStatus("读取失败：" + friendlyError(error))
     } finally {
-      setLoading(false)
+      if (state.generation === generation) {
+        state.busy = false
+        setLoading(false)
+      }
+    }
+  }
+
+  const loadMore = async (retry = false) => {
+    const state = pager.current
+    if (!props.session || state.busy || state.finished || !state.cursor ||
+        (state.retryRequired && !retry)) return
+    const generation = state.generation
+    const cursor = state.cursor
+    state.busy = true
+    state.retryRequired = false
+    setPageError("")
+    setLoadingMore(true)
+    try {
+      const page = await listPushBooksPage(cursor)
+      if (state.generation !== generation) return
+      state.cursor = page.nextCursor
+      state.finished = page.nextCursor === null
+      setItems((current) => mergeChanges(current, page.items))
+      setHasMore(!state.finished)
+      setStatus(state.finished ? "已读取全部推送记录" : "已载入更多，可继续向下滚动")
+    } catch (error) {
+      if (state.generation !== generation) return
+      state.retryRequired = true
+      setPageError(friendlyError(error))
+    } finally {
+      if (state.generation === generation) {
+        state.busy = false
+        setLoadingMore(false)
+      }
     }
   }
 
   useEffect(() => {
+    setItems([])
+    setQuery("")
     void refresh()
   }, [props.session?.token, props.session?.region])
 
@@ -260,15 +328,17 @@ function CloudView(props: {
           <Button
             title="刷新"
             systemImage="arrow.clockwise"
-            disabled={loading || busyId !== null || !props.session}
+            disabled={loading || loadingMore || busyId !== null || !props.session}
             action={refresh}
           />
         </HStack>
         {loading ? <ProgressView /> : null}
+        {loading && items.length > 0 ? <Text>正在刷新，保留之前已加载的列表</Text> : null}
         {status ? <Text>{status}</Text> : null}
       </Section>
 
-      <Section header={<Text>推送列表 · {visible.length}/{items.length}</Text>}>
+      <Section header={<Text>推送列表 · {visible.length}/{items.length}{hasMore ? " · 尚未全部载入" : ""}</Text>}>
+        {keyword && hasMore ? <Text font="caption" foregroundStyle="secondaryLabel">搜索仅覆盖已加载的图书，加载更多可扩大范围。</Text> : null}
         {!props.session ? (
           <Button title="前往登录" systemImage="person.crop.circle" action={props.onRequestLogin} />
         ) : visible.length ? (
@@ -303,9 +373,22 @@ function CloudView(props: {
             </HStack>
           ))
         ) : (
-          <Text>{keyword ? "没有匹配的电子书" : "暂无推送电子书"}</Text>
+          <Text>{loading ? "正在读取首批文件…" : hasMore ? "当前批次暂无匹配图书，继续加载可查找更多" : keyword ? "没有匹配的电子书" : "暂无推送电子书"}</Text>
         )}
       </Section>
+      {hasMore && props.session ? (
+        <Section>
+          {pageError ? <Text>加载下一批失败：{pageError}。已有列表不受影响。</Text> : null}
+          <Button
+            title={pageError ? "重试加载更多" : loadingMore ? "正在加载更多…" : "加载更多"}
+            systemImage="chevron.down"
+            disabled={loading || loadingMore || busyId !== null}
+            onAppear={() => { void loadMore(false) }}
+            action={() => { void loadMore(true) }}
+          />
+          {loadingMore ? <ProgressView /> : null}
+        </Section>
+      ) : null}
     </Form>
   )
 }
