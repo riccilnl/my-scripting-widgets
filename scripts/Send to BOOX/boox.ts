@@ -1,5 +1,6 @@
 import { Path } from "scripting"
 import { BOOX_PUSH_PAGE_SIZE, parseChangesPage, type BooxChangesPage } from "./cloud-pagination"
+import { readWithCloudRecovery } from "./cloud-recovery"
 
 export type BooxRegion = "cn" | "us" | "eu"
 
@@ -256,7 +257,9 @@ async function responseError(response: any, label: string): Promise<never> {
     // Ignore response-body decoding errors.
   }
   if (body.length > 1200) body = body.slice(0, 1200) + "…"
-  throw new Error(`${label}失败 (${response.status})${body ? `：${body}` : ""}`)
+  const error = new Error(`${label}失败 (${response.status})${body ? `：${body}` : ""}`) as Error & { status: number }
+  error.status = response.status
+  throw error
 }
 
 async function booxJSON(
@@ -484,7 +487,10 @@ export async function verifySession(): Promise<string> {
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
   const me = await booxJSON(session.region, "/api/1/users/me", { token: session.token })
-  return me?.data?.nickname || me?.data?.email || session.email
+  if (!me?.data?.uid || String(me.data.uid) !== String(session.uid)) {
+    throw new Error("BOOX 账号资料缺少匹配的 UID，无法确认当前登录状态")
+  }
+  return me.data.nickname || me.data.email || session.email
 }
 
 type STSCredentials = {
@@ -991,14 +997,15 @@ async function syncGatewayJSON(
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     timeout: 30,
-    debugLabel: `BOOX Sync Gateway ${path}`,
+    debugLabel: "BOOX Sync Gateway",
   })
 
   const text = await response.text()
   if (!response.ok) {
     const detail = text.trim().slice(0, 1200)
-    throw new Error(      `BOOX Sync Gateway 请求失败 (${response.status})${detail ? `：${detail}` : ""}`,
-    )
+    const error = new Error(`BOOX Sync Gateway 请求失败 (${response.status})${detail ? `：${detail}` : ""}`) as Error & { status: number }
+    error.status = response.status
+    throw error
   }
   if (!text.trim()) return null
   try {
@@ -1048,16 +1055,32 @@ function pushBookFromDoc(doc: Record<string, any>): BooxPushBook | null {
 }
 
 /** One page of the versioned Sync Gateway changes feed; all writes retain _rev metadata. */
-export async function listPushBooksPage(since: string | null = null): Promise<BooxChangesPage> {
+export async function listPushBooksPage(
+  since: string | null = null,
+  onRecovery?: () => void,
+): Promise<BooxChangesPage> {
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
-  const sync = await getSyncSession(session)
   const channel = encodeURIComponent(session.uid + "-MESSAGE")
   const path = "/_changes?filter=sync_gateway/bychannel&channels=" + channel +
     "&include_docs=true&active_only=true&limit=" + BOOX_PUSH_PAGE_SIZE +
     "&style=main_only" + (since === null ? "" : "&since=" + encodeURIComponent(since))
-  const payload = await syncGatewayJSON(session, sync, path)
-  return parseChangesPage(payload, since, BOOX_PUSH_PAGE_SIZE, pushBookFromDoc)
+
+  return readWithCloudRecovery(
+    async () => {
+      // Each attempt obtains its own fresh Sync Gateway cookie.
+      const sync = await getSyncSession(session)
+      const payload = await syncGatewayJSON(session, sync, path)
+      return parseChangesPage(payload, since, BOOX_PUSH_PAGE_SIZE, pushBookFromDoc)
+    },
+    async () => {
+      const me = await booxJSON(session.region, "/api/1/users/me", { token: session.token })
+      if (!me?.data?.uid || String(me.data.uid) !== String(session.uid)) {
+        throw new Error("BOOX 账号资料不匹配，无法确认登录状态")
+      }
+    },
+    onRecovery,
+  )
 }
 
 export async function deletePushBook(item: BooxPushBook): Promise<void> {
