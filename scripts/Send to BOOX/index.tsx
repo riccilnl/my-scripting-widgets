@@ -283,8 +283,10 @@ function CloudView(props: {
     setStatus(`正在重新推送：${item.name}`)
     try {
       const updated = await repushPushBook(item)
-      pager.current.books = mergeChanges(pager.current.books, [updated])
-      setItems(pager.current.books)
+      snapshot.current.books = sortBooksLatest(snapshot.current.books.map(
+        value => value.id === updated.id ? updated : value,
+      ))
+      setItems(snapshot.current.books)
       setSearchResults((current) => sortBooksLatest(
         current.map(value => value.id === updated.id ? updated : value),
       ))
@@ -310,9 +312,9 @@ function CloudView(props: {
     setStatus(`正在删除：${item.name}`)
     try {
       await deletePushBook(item)
-      pager.current.deletedIds.add(item.id)
-      pager.current.books = pager.current.books.filter(value => value.id !== item.id)
-      setItems(pager.current.books)
+      snapshot.current.deletedIds.add(item.id)
+      snapshot.current.books = snapshot.current.books.filter(value => value.id !== item.id)
+      setItems(snapshot.current.books)
       setSearchResults((current) => current.filter(value => value.id !== item.id))
       setStatus(`已删除：${item.name}`)
     } catch (error) {
@@ -373,7 +375,7 @@ function CloudView(props: {
         <Section>
           {!props.session ? (
             <Button title="前往登录" systemImage="person.crop.circle" action={props.onRequestLogin} />
-          ) : loading && !loaded ? (
+          ) : loading && items.length === 0 ? (
             <VStack alignment="leading" spacing={8}>
               <ProgressView />
               <Text>正在读取云盘图书…</Text>
@@ -421,24 +423,6 @@ function CloudView(props: {
         </Section>
       )}
 
-      {searchStage === "browse" && scanning ? (
-        <Section>
-          <HStack spacing={8}>
-            <ProgressView />
-            <Text font="caption" foregroundStyle="secondaryLabel">正在整理完整书库，按最新时间排序…</Text>
-          </HStack>
-        </Section>
-      ) : null}
-      {searchStage === "browse" && hasMore && !scanning && scanError ? (
-        <Section>
-          <Text>{scanError}</Text>
-          <Button
-            title="继续整理书库"
-            systemImage="arrow.clockwise"
-            action={() => { void scanRemaining(pager.current.generation) }}
-          />
-        </Section>
-      ) : null}
     </Form>
   )
 }
