@@ -36,10 +36,15 @@ test("region switching confirms before clearing credentials", () => {
   assert.match(source, /登录信息保存在本设备的 iOS 钥匙串/)
 })
 
-test("cloud regression: preserve the 0.1.10 Form and simple refresh", () => {
+test("cloud retains the working Form and loads additional pages lazily", () => {
   assert.match(source, /<Form navigationTitle="云盘">/)
-  assert.match(source, /setStatus\("正在读取 BOOX 推送列表…"\)/)
-  assert.match(source, /setLoading\(false\)/)
-  assert.doesNotMatch(source, /requestRef\.current/)
+  assert.match(source, /listPushBooksPage\(null\)/)
+  assert.match(source, /listPushBooksPage\(cursor\)/)
+  assert.match(source, /mergeChanges\(current, page\.items\)/)
+  assert.match(source, /onAppear=\{\(\) => \{ void loadMore\(false\) \}\}/)
+  assert.match(source, /重试加载更多/)
+  assert.match(source, /搜索仅覆盖已加载的图书/)
+  assert.match(source, /state\.generation !== generation/)
+  assert.match(source, /state\.retryRequired = true/)
   assert.doesNotMatch(source, /<List navigationTitle="云盘"/)
 })
