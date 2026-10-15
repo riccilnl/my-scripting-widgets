@@ -1,4 +1,5 @@
 import { Path } from "scripting"
+import { BOOX_PUSH_PAGE_SIZE, parseChangesPage, type BooxChangesPage } from "./cloud-pagination"
 
 export type BooxRegion = "cn" | "us" | "eu"
 
@@ -1046,27 +1047,17 @@ function pushBookFromDoc(doc: Record<string, any>): BooxPushBook | null {
   }
 }
 
-export async function listPushBooks(): Promise<BooxPushBook[]> {
+/** One page of the versioned Sync Gateway changes feed; all writes retain _rev metadata. */
+export async function listPushBooksPage(since: string | null = null): Promise<BooxChangesPage> {
   const session = loadSession()
   if (!session) throw new Error("尚未登录 BOOX")
   const sync = await getSyncSession(session)
-  const channel = encodeURIComponent(`${session.uid}-MESSAGE`)
-  const payload = await syncGatewayJSON(
-    session,
-    sync,
-    `/_changes?filter=sync_gateway/bychannel&channels=${channel}&include_docs=true&active_only=true&limit=10000&style=main_only`,
-  )
-
-  const docs = Array.isArray(payload?.results)
-    ? payload.results.map((row: any) => row?.doc).filter(Boolean)
-    : []
-
-  return docs
-    .map((doc: Record<string, any>) => pushBookFromDoc(doc))
-    .filter((item: BooxPushBook | null): item is BooxPushBook => item !== null)
-    .sort((a: BooxPushBook, b: BooxPushBook) =>
-      (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt),
-    )
+  const channel = encodeURIComponent(session.uid + "-MESSAGE")
+  const path = "/_changes?filter=sync_gateway/bychannel&channels=" + channel +
+    "&include_docs=true&active_only=true&limit=" + BOOX_PUSH_PAGE_SIZE +
+    "&style=main_only" + (since === null ? "" : "&since=" + encodeURIComponent(since))
+  const payload = await syncGatewayJSON(session, sync, path)
+  return parseChangesPage(payload, since, BOOX_PUSH_PAGE_SIZE, pushBookFromDoc)
 }
 
 export async function deletePushBook(item: BooxPushBook): Promise<void> {
