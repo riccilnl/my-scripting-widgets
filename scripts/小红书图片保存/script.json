@@ -1,0 +1,27 @@
+{
+  "description": "粘贴小红书链接，按 traceId/original 提取正文无水印原图并保存到相册",
+  "intentInputTypes": [],
+  "icon": "photo.on.rectangle.angled",
+  "localizedNames": {
+    "zh": "小红书图片保存",
+    "en": "XHS Photo Saver"
+  },
+  "version": "1.5.0",
+  "permissions": null,
+  "name": "小红书图片保存",
+  "runInApp": false,
+  "author": {
+    "name": "Ricci",
+    "email": "",
+    "homepage": ""
+  },
+  "contributors": [],
+  "remoteResource": null,
+  "iconImage": "",
+  "color": "rgba(255, 45, 85, 1.00)",
+  "entry": "index.tsx",
+  "localizedDescriptions": {
+    "zh": "粘贴小红书链接，按 traceId/original 提取正文无水印原图并保存到相册",
+    "en": "Paste a Xiaohongshu post URL, select photos, and save them to Photos."
+  }
+}
