@@ -1,0 +1,27 @@
+{
+  "description": "方太 N10 登录测试版：移除前置安全检查，直接请求短信与登录接口。",
+  "intentInputTypes": [],
+  "icon": "dishwasher.fill",
+  "localizedNames": {
+    "zh": "方太 N10",
+    "en": "FOTILE N10"
+  },
+  "version": "0.1.4",
+  "permissions": null,
+  "name": "FOTILE N10",
+  "runInApp": false,
+  "author": {
+    "name": "Ricci",
+    "email": "",
+    "homepage": ""
+  },
+  "contributors": [],
+  "remoteResource": null,
+  "iconImage": "",
+  "color": "rgba(39, 104, 245, 1.00)",
+  "entry": "index.tsx",
+  "localizedDescriptions": {
+    "zh": "方太 N10 登录测试版：移除前置安全检查，直接请求短信与登录接口。",
+    "en": "Full-screen FOTILE JBCD6E-03-N10 controller with phone/SMS login and MQTT WebSocket control."
+  }
+}
