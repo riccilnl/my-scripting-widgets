@@ -136,7 +136,7 @@ function t9CustomKey(preferences: RuntimeT9CustomKey): KeyDefinition {
     id: "t9-delimiter",
     semantic: { kind: "text", text: preferences.label, textRole: "function" },
     actions: { tap: preferences.command },
-    visualRole: "normal"
+    visualRole: "system"
   };
 }
 

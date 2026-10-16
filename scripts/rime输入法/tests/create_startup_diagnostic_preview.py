@@ -6,7 +6,7 @@ from pathlib import Path
 from create_perf_preview import OUT, write_package
 from create_compiler_payload_preview import transform
 
-FILENAME = "Rime-startup-trace-0.3.58-preview.scripting"
+FILENAME = "Rime-startup-trace-0.3.59-preview.scripting"
 REMOTE_ARCHIVE_NAME = "Rime-startup-trace-latest.zip"
 REMOTE_ARCHIVE_URL = (
     "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/"
@@ -34,7 +34,7 @@ def build():
         "autoUpdateInterval": AUTO_UPDATE_INTERVAL
     }
     files["script.json"] = (json.dumps(metadata, ensure_ascii=False, indent=2) + "\n").encode()
-    item = write_package(files, PROJECT, "Rime 启动诊断测试", "0.3.58", FILENAME,
+    item = write_package(files, PROJECT, "Rime 启动诊断测试", "0.3.59", FILENAME,
                          english_name="Rime Startup Diagnostics Test")
     # A stable .zip URL is explicitly supported by the official remote-resource API.
     # .scripting and .zip contain identical ZIP bytes for predictable validation.

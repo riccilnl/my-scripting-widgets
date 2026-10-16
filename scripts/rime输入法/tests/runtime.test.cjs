@@ -483,6 +483,26 @@ test("nine-key pinyin choices are published only when displayed values change", 
   assert.equal(updates.length, 2);
 });
 
+test("T9 right-rail custom key shares the system color role with delete and enter", () => {
+  const { createKeyboardKeyCatalog } = load("keyboard/layout/KeyCatalog.ts",
+    ["createKeyboardKeyCatalog"], {
+      FROZEN_QWERTY_ROWS: [], FROZEN_T9_ROWS: [], FROZEN_NUMERIC_DIGIT_ROWS: [],
+      backspaceActionMap: () => ({ tap: { type: "backspace" } }),
+      spaceActionMap: () => ({ tap: { type: "space" } })
+    });
+  const command = { type: "clearComposition" };
+  const catalog = createKeyboardKeyCatalog({}, { label: "清", command });
+  assert.equal(catalog.t9.delimiter.id, "t9-delimiter");
+  assert.equal(catalog.t9.delimiter.visualRole, "system");
+  assert.equal(catalog.t9.backspace.visualRole, "system");
+  assert.equal(catalog.t9.enter.visualRole, "system");
+  assert.equal(catalog.t9.delimiter.semantic.text, "清");
+  assert.equal(catalog.t9.delimiter.actions.tap.type, "clearComposition");
+  const view = fs.readFileSync(path.join(root, "keyboard/components/KeyView.tsx"), "utf8");
+  assert.match(view, /skin\.keyVisualRoleOverrides\?\.\[definition\.id\] \?\? definition\.visualRole/);
+  assert.match(view, /colors\.keyBackgroundOverrides\?\.\[definition\.id\] \?\? colors\.keyBackgrounds\[visualRole\]/);
+});
+
 test("T9 pinyin updates repaint subscribed column without changing frozen touch geometry", () => {
   const rootSource = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const subscriber = fs.readFileSync(path.join(root,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the OTA diagnostics 0.3.58 archive and pinned compatibility URLs.
+"""Check the OTA diagnostics 0.3.59 archive and pinned compatibility URLs.
 
 This is deliberately separate from the one-off independent experiment,
 because the user's existing iPhone project follows the diagnostics OTA channel.
@@ -20,12 +20,11 @@ from create_startup_diagnostic_preview import (
     REMOTE_ARCHIVE_NAME, REMOTE_ARCHIVE_URL
 )
 
-VERSION = "0.3.58"
-FROZEN_PREVIOUS_VERSION_PATH = (
-    Path(__file__).resolve().parents[3] /
-    "previews/rime-startup-20261013/Rime-startup-trace-0.3.57-preview.scripting"
-)
-FROZEN_PREVIOUS_SHA256 = "5fea010126cc97eda89cb1ba376d83b93dad636d29be33fe4554e7246e5ce97f"
+VERSION = "0.3.59"
+FROZEN_PREVIOUS_ARCHIVES = {
+    "0.3.57": "5fea010126cc97eda89cb1ba376d83b93dad636d29be33fe4554e7246e5ce97f",
+    "0.3.58": "5725c42b3e9ae1157772ac6a527a072908eda7f7e808456d731093d26deb065c",
+}
 
 
 def verify() -> None:
@@ -96,13 +95,16 @@ def verify() -> None:
 
         assert not any("/docs/" in name or "/tests/" in name for name in names)
 
-    # The historical versioned 0.3.57 file must remain immutable even after
-    # 0.3.58 updates latest.zip and the phone's pinned 0.3.46 alias.
-    assert FROZEN_PREVIOUS_VERSION_PATH.is_file()
-    assert hashlib.sha256(FROZEN_PREVIOUS_VERSION_PATH.read_bytes()).hexdigest() == FROZEN_PREVIOUS_SHA256
-    assert hashlib.sha256(FROZEN_PREVIOUS_VERSION_PATH.read_bytes()).hexdigest() != info["sha256"]
-    print("STARTUP_TRACE_038_SOURCE_PASS", len(source), info["sha256"])
-    print("STARTUP_TRACE_037_FROZEN_PASS", FROZEN_PREVIOUS_SHA256)
+    # Historical versioned archives are immutable while latest.zip and the
+    # original pinned 0.3.46 compatibility URL track each preview release.
+    for version, expected_sha in FROZEN_PREVIOUS_ARCHIVES.items():
+        old_path = (Path(__file__).resolve().parents[3] /
+            f"previews/rime-startup-20261013/Rime-startup-trace-{version}-preview.scripting")
+        assert old_path.is_file(), old_path
+        assert hashlib.sha256(old_path.read_bytes()).hexdigest() == expected_sha
+        assert expected_sha != info["sha256"]
+        print("STARTUP_TRACE_FROZEN_PASS", version, expected_sha)
+    print("STARTUP_TRACE_039_SOURCE_PASS", len(source), info["sha256"])
 
 
 if __name__ == "__main__":
