@@ -1,0 +1,24 @@
+{
+  "name": "ASCIIFlow",
+  "description": "Touch-first offline ASCII UI prototyping editor with canvas-level paste menu.",
+  "version": "0.1.15",
+  "icon": "square.grid.3x3",
+  "color": "#111827",
+  "localizedNames": {
+    "zh": "ASCIIFlow",
+    "en": "ASCIIFlow"
+  },
+  "localizedDescriptions": {
+    "zh": "离线 ASCII UI 原型草稿工具：长按对象复制，长按空白画布粘贴。",
+    "en": "Offline full-screen ASCII UI prototype sketch editor with drag-to-create geometry, text, long-press object copy/paste/delete and locking, multi-object selection, secondary editing, undo/redo and import/export."
+  },
+  "intentInputTypes": [],
+  "runInApp": false,
+  "entry": "index.tsx",
+  "author": {
+    "name": "Ricci",
+    "email": "",
+    "homepage": ""
+  },
+  "contributors": []
+}
