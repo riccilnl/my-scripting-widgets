@@ -1,0 +1,24 @@
+{
+  "name": "UI Marker",
+  "description": "UI 截图测量与标注工具",
+  "version": "0.1.3",
+  "icon": "ruler",
+  "color": "#8E8E93",
+  "localizedNames": {
+    "zh": "UI 标注器",
+    "en": "UI Marker"
+  },
+  "localizedDescriptions": {
+    "zh": "导入 UI 截图，缩放、平移并按原图像素测距和框选。",
+    "en": "Zoom, pan and measure UI screenshots in source pixels."
+  },
+  "intentInputTypes": [],
+  "runInApp": false,
+  "entry": "index.tsx",
+  "author": {
+    "name": "Ricci",
+    "email": "",
+    "homepage": ""
+  },
+  "contributors": []
+}
