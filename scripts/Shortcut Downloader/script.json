@@ -1,0 +1,27 @@
+{
+  "description": "Download an Apple Shortcut from an iCloud sharing URL and export the .shortcut file with the system document picker.",
+  "intentInputTypes": [],
+  "icon": "square.and.arrow.down",
+  "localizedNames": {
+    "en": "Shortcut Downloader",
+    "zh": "快捷指令下载器"
+  },
+  "version": "1.0.0",
+  "permissions": null,
+  "name": "Shortcut Downloader",
+  "runInApp": false,
+  "author": {
+    "name": "Ricci",
+    "email": "",
+    "homepage": ""
+  },
+  "contributors": [],
+  "remoteResource": null,
+  "iconImage": "",
+  "color": "rgba(0, 122, 255, 1.00)",
+  "entry": "index.tsx",
+  "localizedDescriptions": {
+    "en": "Download an Apple Shortcut from an iCloud sharing URL.",
+    "zh": "通过 iCloud 分享链接下载 Apple 快捷指令文件。"
+  }
+}
