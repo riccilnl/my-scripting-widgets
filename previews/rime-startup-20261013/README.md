@@ -17,11 +17,11 @@ increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
-0.3.58 now follows the SAME mutable URL as 0.3.57.
+0.3.59 now follows the SAME mutable URL as 0.3.58.
 The embedded T9 Lua resource moved out of the initial TS import
 graph to a packaged file read only when T9 repair is needed.
 It is a compiler-load hypothesis, NOT a proven speed improvement.
-The previously published 0.3.57 snapshot is frozen for rollback.
+The previously published 0.3.57 and 0.3.58 snapshots are frozen for rollback.
 The installed iPhone may pin a previous versioned download URL;
 that 0.3.46 compatibility alias stays synchronized with latest.
 An iPhone update and actual T9 first-frame / functionality test are
@@ -46,4 +46,6 @@ The displayed "present.return" does NOT mean the UI frame became visible.
 This package may share Rime dictionaries, schemas and App Group data with
 the official keyboard. Avoid schema deployment/update while testing.
 
-Official main 0.3.52 is unchanged.
+0.3.59: T9 right-rail second key shares system background role
+with Backspace; its configured command and touch area are unchanged.
+Official main is unchanged.
