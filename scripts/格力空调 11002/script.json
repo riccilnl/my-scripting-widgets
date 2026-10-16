@@ -1,0 +1,12 @@
+{
+  "name": "格力空调 11002",
+  "icon": "air.conditioner.horizontal",
+  "color": "rgba(10, 132, 255, 1)",
+  "version": "1.1.4",
+  "description": "通过格力局域网协议控制 mid=11002 空调；自适应温度状态查询；诊断结果可直接显示并校验剪贴板；支持开关、设定温度、室温读取和控制中心 Toggle。",
+  "author": {
+    "name": "Ricci",
+    "email": "",
+    "homepage": ""
+  }
+}
