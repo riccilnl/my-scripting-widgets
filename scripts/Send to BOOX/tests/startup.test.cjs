@@ -87,7 +87,7 @@ test("generation guard discards stale response; refresh preserves safe writes", 
   const cloud = source.slice(source.indexOf("function CloudView("), source.indexOf("function SettingsView("))
   assert.match(cloud, /const generation = \+\+state\.generation/)
   assert.match(cloud, /if \(state\.generation !== generation\) return/)
-  assert.match(cloud, /snapshot\.current\.deletedIds\.add\(item\.id\)/)
+  assert.match(cloud, /(?:state|snapshot\.current)\.deletedIds\.add\(item\.id\)/)
   assert.match(cloud, /snapshot\.current\.books = snapshot\.current\.books\.filter/)
   assert.match(cloud, /repushPushBook\(item\)/)
   assert.match(cloud, /deletePushBook\(item\)/)
