@@ -210,7 +210,7 @@ export async function login(email: string, password: string): Promise<void> {
 export async function chooseDownloadPath(
   book: Pick<Book, "id" | "title" | "extension">,
   folder: string,
-  exists: (path: string) => Promise<boolean> = FileManager.exists
+  exists: (path: string) => Promise<boolean> = (path) => FileManager.exists(path)
 ): Promise<string> {
   const ext = /^[a-z0-9]{1,8}$/i.test(book.extension)
     ? book.extension.toLowerCase() : "bin"

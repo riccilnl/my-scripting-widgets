@@ -23,7 +23,13 @@ global.Keychain = {
 };
 global.FileManager = {
   documentsDirectory: "/docs",
-  exists: async file => known.has(file),
+  exists: async function(file) {
+    // Simulate JavaScriptCore's native instance-method receiver validation.
+    // Passing the method as a detached callback must fail this regression.
+    if (this !== global.FileManager)
+      throw new TypeError("self type check failed for Objective-C instance method");
+    return known.has(file);
+  },
   createDirectory: async () => {},
   writeAsBytes: async (file,content) => {
     if (known.has(file)) throw new Error("Unwanted overwrite: " + file);
