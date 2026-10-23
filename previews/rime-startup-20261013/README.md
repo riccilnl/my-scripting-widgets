@@ -17,7 +17,13 @@ increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
-0.3.59 now follows the SAME mutable URL as 0.3.58.
+0.3.60 updates the same stable ZIP and the 0.3.46 pinned compatibility
+alias, restoring T9 pinyin options after partial selection while
+retaining Rime-owned Chinese candidates and ranking. Fedora LuaJIT
+simulation passed; iPhone Scripting behavior is not yet accepted.
+The 0.3.59, 0.3.58 and 0.3.57 snapshots remain frozen.
+
+0.3.59 previously followed the SAME mutable URL as 0.3.58.
 The embedded T9 Lua resource moved out of the initial TS import
 graph to a packaged file read only when T9 repair is needed.
 It is a compiler-load hypothesis, NOT a proven speed improvement.

@@ -1,5 +1,6 @@
-2f7cd5ac509c1810efb07c7a249d332d7b659f4ebc0b26e8fea18d76ee671ec0  Rime-startup-trace-0.3.46-preview.scripting
+df396887fe6f6f7fd10723c54ff342300b347d9a825c179114a920105a258c3f  Rime-startup-trace-0.3.46-preview.scripting
 5fea010126cc97eda89cb1ba376d83b93dad636d29be33fe4554e7246e5ce97f  Rime-startup-trace-0.3.57-preview.scripting
 5725c42b3e9ae1157772ac6a527a072908eda7f7e808456d731093d26deb065c  Rime-startup-trace-0.3.58-preview.scripting
 2f7cd5ac509c1810efb07c7a249d332d7b659f4ebc0b26e8fea18d76ee671ec0  Rime-startup-trace-0.3.59-preview.scripting
-2f7cd5ac509c1810efb07c7a249d332d7b659f4ebc0b26e8fea18d76ee671ec0  Rime-startup-trace-latest.zip
+df396887fe6f6f7fd10723c54ff342300b347d9a825c179114a920105a258c3f  Rime-startup-trace-0.3.60-preview.scripting
+df396887fe6f6f7fd10723c54ff342300b347d9a825c179114a920105a258c3f  Rime-startup-trace-latest.zip
