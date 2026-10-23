@@ -203,6 +203,32 @@ export async function login(email: string, password: string): Promise<void> {
   // Do not guess or submit credentials to undocumented forms.
   throw new Error(reason + "。可使用网页登录后取得的个人会话 ID 与 Key 导入，或稍后重试。")
 }
+/**
+ * User-facing filenames contain only the readable book title and format.
+ * Numeric suffixes are used only for existing-name collisions.
+ */
+export async function chooseDownloadPath(
+  book: Pick<Book, "id" | "title" | "extension">,
+  folder: string,
+  exists: (path: string) => Promise<boolean> = FileManager.exists
+): Promise<string> {
+  const ext = /^[a-z0-9]{1,8}$/i.test(book.extension)
+    ? book.extension.toLowerCase() : "bin"
+  const title = (book.title || book.id)
+    .replace(/[\/\\:*?"<>|\x00-\x1f]+/g, "_")
+    .replace(/\s+/g, " ").replace(/[.\s]+$/g, "").trim()
+    .replace(new RegExp("\\." + ext + "$", "i"), "")
+    .slice(0, 100).replace(/[.\s]+$/g, "") || book.id
+  const prefix = folder + "/" + title
+  let path = prefix + "." + ext
+  let suffix = 2
+  while (await exists(path)) {
+    if (suffix > 10000) throw new Error("同名文件过多，请整理下载文件夹")
+    path = prefix + " (" + suffix++ + ")." + ext
+  }
+  return path
+}
+
 export async function download(book: Book): Promise<string> {
   if (!readSession()) throw new Error("请先在设置中登录账号")
   const url = readDomain() + "/eapi/book/" + book.id + "/" + book.hash + "/file"
@@ -227,11 +253,9 @@ export async function download(book: Book): Promise<string> {
   if (!content.length) throw new Error("下载文件为空")
   if (content.length > 150 * 1024 * 1024) throw new Error("文件超过当前版本 150MB 限额")
   if (String.fromCharCode(...Array.from(content.slice(0, 15))).trim().startsWith("<!DOCTYPE") || String.fromCharCode(...Array.from(content.slice(0, 15))).trim().startsWith("<html")) throw new Error("服务器返回了网页而不是文件")
-  const ext = /^[A-Z0-9]{1,8}$/.test(book.extension) ? book.extension.toLowerCase() : "bin"
-  const name = (book.title || book.id).replace(/[\/\\:*?"<>|\x00-\x1f]/g, "_").trim().slice(0, 75) || book.id
   const folder = FileManager.documentsDirectory + "/Z-Library"
   await FileManager.createDirectory(folder, true)
-  const path = folder + "/" + name + "-" + book.id + "-" + Date.now() + "." + ext
+  const path = await chooseDownloadPath(book, folder)
   await FileManager.writeAsBytes(path, content)
   return path
 }
