@@ -37,7 +37,7 @@ function Root() {
     <Tab title="最新" systemImage="clock" value={0}><LatestPage /></Tab>
     <Tab title="搜索" systemImage="magnifyingglass" value={1}><SearchPage /></Tab>
     <Tab title="设置" systemImage="gearshape" value={2}><SettingsPage /></Tab>
-    <Tab title="退出" systemImage="rectangle.portrait.and.arrow.right" value={3}><Text>正在退出…</Text></Tab>
+    <Tab title="退出" systemImage="xmark.circle" value={3}><Text>正在退出…</Text></Tab>
   </TabView>
 }
 

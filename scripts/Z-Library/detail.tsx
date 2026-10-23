@@ -50,18 +50,18 @@ export function BookDetails({ book }: { book: Book }) {
         {current.cover.startsWith("https://")
           ? <Image imageUrl={current.cover} resizable={true}
               aspectRatio={{ contentMode: "fit" }}
-              background={UI.coverBackground}
+              background={UI.coverBackground} clipShape={{ type: "rect", cornerRadius: UI.radius }}
               frame={{ width: UI.heroCoverWidth, height: UI.heroCoverHeight }} />
           : <Image systemName="book.closed" foregroundStyle={UI.secondary}
               aspectRatio={{ contentMode: "fit" }}
-              background={UI.coverBackground}
+              background={UI.coverBackground} clipShape={{ type: "rect", cornerRadius: UI.radius }}
               frame={{ width: UI.heroCoverWidth, height: UI.heroCoverHeight }} />}
         <VStack alignment="leading" spacing={9}
           frame={{ maxWidth: "infinity", alignment: "leading" }}>
           <Text font="title3" lineLimit={4} foregroundStyle={UI.primary}>
             {current.title}
           </Text>
-          <Text font="subheadline" foregroundStyle={UI.secondary}>
+          <Text font="subheadline" lineLimit={2} foregroundStyle={UI.secondary}>
             {current.author || "作者未知"}
           </Text>
           <Text font="caption" foregroundStyle={UI.muted}>

@@ -8,7 +8,6 @@ export const UI = {
   secondary: "secondaryLabel",
   muted: "tertiaryLabel",
   divider: "separator",
-  canvas: "systemBackground",
   panel: "secondarySystemGroupedBackground",
   coverBackground: "tertiarySystemGroupedBackground",
   pageInset: 16,
@@ -17,8 +16,8 @@ export const UI = {
   sectionGap: 16,
   coverWidth: 66,
   coverHeight: 94,
-  heroCoverWidth: 122,
-  heroCoverHeight: 173,
+  heroCoverWidth: 108,
+  heroCoverHeight: 154,
   radius: 11,
   touchHeight: 48
 } as const

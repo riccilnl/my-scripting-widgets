@@ -77,6 +77,6 @@ test("automatic scroll pagination, fitted covers, detail limit, session check an
   assert.match(read("index.tsx"),/AppEvents.scenePhase/);
   assert.match(read("index.tsx"),/Script.exit/);
   const meta=JSON.parse(read("script.json"));
-  assert.equal(meta.version,"0.4.0-preview.1");
+  assert.equal(meta.version,"0.4.0-preview.2");
   assert.equal(meta.remoteResource.url,"https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/zlibrary-ui-preview/Z-Library.zip");
 });

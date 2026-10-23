@@ -9,7 +9,7 @@ let calls = [];
 const originalLoad = Module._load;
 const tags = [
   "NavigationStack", "NavigationLink", "ScrollView", "VStack", "HStack", "Spacer",
-  "Text", "Button", "TextField", "Image", "Menu", "Divider"
+  "Text", "Button", "TextField", "Image", "Menu", "Divider", "Toggle"
 ];
 const scripting = {
   ...Object.fromEntries(tags.map(tag=>[tag,tag])),
@@ -53,8 +53,11 @@ test("search root only contains a scrollable form; search results open as a seco
   assert.equal(link.props.destination.type,catalog.SearchResultsPage);
   assert.equal(link.props.destination.props.criteria.query,"");
   assert.ok(!items.some(x=>x.type==="Results"),"results must not render on the form");
-  const remember=items.find(x=>x.type==="Button"&&x.props.title==="记住搜索偏好");
+  const remember=items.find(x=>x.type==="Toggle"&&x.props.title==="记住搜索偏好");
   assert.ok(remember);
+  assert.equal(remember.props.value,false);
+  assert.equal(remember.props.toggleStyle,"switch");
+  assert.equal(typeof remember.props.onChanged,"function");
   assert.ok(!items.some(x=>x.type==="GeometryReader"),"no keyboard-sensitive geometry reader");
 });
 

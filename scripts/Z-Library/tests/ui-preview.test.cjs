@@ -10,7 +10,7 @@ test("one shared visual token palette uses semantic system colors", () => {
   assert.match(ui,/brand: "systemBlue"/);
   assert.match(ui,/primary: "label"/);
   assert.match(ui,/secondary: "secondaryLabel"/);
-  assert.match(ui,/canvas: "systemBackground"/);
+  assert.match(ui,/panel: "secondarySystemGroupedBackground"/);
   assert.match(ui,/coverWidth: 66/);
   assert.match(ui,/coverHeight: 94/);
   for (const part of ["catalog.tsx","results.tsx","detail.tsx","settings.tsx"])

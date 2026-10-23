@@ -1,6 +1,6 @@
 import {
   NavigationStack, NavigationLink, ScrollView, VStack, HStack, Spacer,
-  Text, Button, TextField, Image, Menu, Divider, useState, useEffect, useRef, useColorScheme
+  Text, Button, TextField, Image, Menu, Divider, Toggle, useState, useEffect, useRef, useColorScheme
 } from "scripting"
 import { Book, cachedRecent, recent, search } from "./api"
 import { Results } from "./results"
@@ -21,15 +21,17 @@ function appendUnique(old: Book[], next: Book[]): Book[] {
   }))
 }
 
-function ChoiceMenu({ options, selected, onChange }: {
+function ChoiceMenu({ options, selected, onChange, compact = false }: {
   options: Choice[]; selected: string; onChange: (value: string) => void
+  compact?: boolean
 }) {
   // Ensure the selection and chevron remain readable in both light and
   // dark appearances instead of inheriting low-contrast link tint.
   const scheme = useColorScheme()
   const ink = scheme === "dark" ? "white" : "black"
-  return <Menu label={<HStack spacing={6}>
-    <Text foregroundStyle={ink}>{searchPrefsLabel(options, selected)}</Text>
+  return <Menu label={<HStack spacing={5}
+    frame={{ maxWidth: compact ? 68 : 150, alignment: "trailing" }}>
+    <Text foregroundStyle={ink} lineLimit={1}>{searchPrefsLabel(options, selected)}</Text>
     <Image systemName="chevron.down" foregroundStyle={ink} />
   </HStack>}>
     {options.map(item => <Button key={item.value}
@@ -160,20 +162,23 @@ export function SearchPage() {
         <TextField title="搜索关键词" prompt="书名、作者、ISBN 或关键词（可留空）"
           value={query} onChanged={setQuery} textFieldStyle="roundedBorder"
           frame={{ maxWidth: "infinity", alignment: "leading" }} />
-        <Divider />
-        <HStack spacing={8} frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }}>
-          <Text foregroundStyle={UI.primary}>时间</Text>
-          <Spacer />
-          <ChoiceMenu options={YEAR_CHOICES} selected={yearFrom} onChange={setYearFrom} />
-          <Text>至</Text>
-          <ChoiceMenu options={YEAR_CHOICES} selected={yearTo} onChange={setYearTo} />
-        </HStack>
-        <Divider />
-        <FilterRow title="语言" options={LANGUAGES} value={language} onChange={setLanguage} />
-        <Divider />
-        <FilterRow title="格式" options={FORMATS} value={format} onChange={setFormat} />
-        <Divider />
-        <FilterRow title="排列方式" options={ORDERS} value={order} onChange={setOrder} />
+        <VStack alignment="leading" spacing={0} padding={{ horizontal: 12 }}
+          background={UI.panel} clipShape={{ type: "rect", cornerRadius: UI.radius }}
+          frame={{ maxWidth: "infinity", alignment: "leading" }}>
+          <HStack spacing={8} frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }}>
+            <Text foregroundStyle={UI.primary}>时间</Text>
+            <Spacer />
+            <ChoiceMenu compact options={YEAR_CHOICES} selected={yearFrom} onChange={setYearFrom} />
+            <Text foregroundStyle={UI.secondary}>至</Text>
+            <ChoiceMenu compact options={YEAR_CHOICES} selected={yearTo} onChange={setYearTo} />
+          </HStack>
+          <Divider foregroundStyle={UI.divider} />
+          <FilterRow title="语言" options={LANGUAGES} value={language} onChange={setLanguage} />
+          <Divider foregroundStyle={UI.divider} />
+          <FilterRow title="格式" options={FORMATS} value={format} onChange={setFormat} />
+          <Divider foregroundStyle={UI.divider} />
+          <FilterRow title="排列方式" options={ORDERS} value={order} onChange={setOrder} />
+        </VStack>
         {invalidYears ? <Text foregroundStyle="red">开始年份不能晚于结束年份</Text> : null}
         <HStack frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }} spacing={0}>
           <Spacer />
@@ -188,13 +193,9 @@ export function SearchPage() {
           </NavigationLink>
           <Spacer />
         </HStack>
-        <HStack frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }} spacing={8}>
-          <Spacer />
-          <Button title="记住搜索偏好"
-            systemImage={remember ? "checkmark.square.fill" : "square"}
-            buttonStyle="plain" action={() => setRememberPreference(!remember)} />
-          <Spacer />
-        </HStack>
+        <Toggle title="记住搜索偏好" value={remember}
+          onChanged={setRememberPreference} toggleStyle="switch"
+          frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }} />
       </VStack>
     </ScrollView>
   </NavigationStack>

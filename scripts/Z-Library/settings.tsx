@@ -119,11 +119,16 @@ export function SettingsPage() {
     </Section>
 
     <Section title="连接和存储">
-      <HStack spacing={8}>
-        <Image systemName="globe" foregroundStyle={UI.secondary} />
-        <Text>当前站点</Text>
-        <Text font="caption" foregroundStyle={UI.secondary}>{readDomain()}</Text>
-      </HStack>
+      <VStack alignment="leading" spacing={5} padding={{ vertical: 5 }}
+        frame={{ maxWidth: "infinity", alignment: "leading" }}>
+        <HStack spacing={8}>
+          <Image systemName="globe" foregroundStyle={UI.secondary} />
+          <Text>当前站点</Text>
+        </HStack>
+        <Text font="caption" foregroundStyle={UI.secondary} lineLimit={2}>
+          {readDomain()}
+        </Text>
+      </VStack>
       <VStack alignment="leading" spacing={5} padding={{ vertical: 5 }}>
         <Text>下载位置</Text>
         <Text font="caption" foregroundStyle={UI.secondary}>

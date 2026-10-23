@@ -11,11 +11,11 @@ function Row({ book }: { book: Book }) {
       {book.cover.startsWith("https://")
         ? <Image imageUrl={book.cover} resizable={true}
             aspectRatio={{ contentMode: "fit" }}
-            background={UI.coverBackground}
+            background={UI.coverBackground} clipShape={{ type: "rect", cornerRadius: UI.radius }}
             frame={{ width: UI.coverWidth, height: UI.coverHeight }} />
         : <Image systemName="book.closed" foregroundStyle={UI.secondary}
             aspectRatio={{ contentMode: "fit" }}
-            background={UI.coverBackground}
+            background={UI.coverBackground} clipShape={{ type: "rect", cornerRadius: UI.radius }}
             frame={{ width: UI.coverWidth, height: UI.coverHeight }} />}
       <VStack alignment="leading" spacing={6}
         frame={{ maxWidth: "infinity", alignment: "leading" }}>
@@ -40,7 +40,7 @@ function ListStatus({ symbol, title, description, retry }: {
     <Image systemName={symbol} foregroundStyle={UI.secondary}
       frame={{ width: 30, height: 30 }} />
     <Text font="headline">{title}</Text>
-    <Text font="caption" foregroundStyle={UI.secondary}>{description}</Text>
+    <Text font="caption" lineLimit={3} foregroundStyle={UI.secondary}>{description}</Text>
     {retry ? <Button title="重新加载" systemImage="arrow.clockwise"
       buttonStyle="bordered" action={retry} /> : null}
   </VStack>
