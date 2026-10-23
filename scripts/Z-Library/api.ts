@@ -122,23 +122,49 @@ export function parseBookPage(payload: unknown): BookPage {
   if (!Array.isArray(list)) throw new Error("书籍列表格式发生变化，请检查接口")
   return { books: list.map(normalizeBook).filter((b): b is Book => b !== null), total: Number(value(p.total, d.total, p.pagination?.total_items, d.pagination?.total_items, p.pagination?.total, d.pagination?.total, list.length)) || 0 }
 }
-export async function recent(page = 1): Promise<BookPage> {
-  const targetPage = Math.max(1, page)
-  // The legacy endpoint currently returns {"success":1} without a books list
-  // on some servers; it must not be interpreted as an API schema change.
+// Cache the first page for repeat launches while keeping refresh explicit.
+const RECENT_TTL_MS = 5 * 60 * 1000
+type RecentCache = { domain: string; time: number; result: BookPage }
+export function cachedRecent(): BookPage | null {
   try {
-    const response = await call("/eapi/book/recently?page=" + targetPage + "&limit=20")
-    const data = obj(response.data)
-    if (Array.isArray(response.books) || Array.isArray(data.books) || Array.isArray(response.data)) {
-      return parseBookPage(response)
-    }
-  } catch {
-    // Continue to the verified recently-added search order.
+    const cache = Storage.get<RecentCache>("zlibrary-chinese-recent-v2")
+    if (!cache || cache.domain !== readDomain() || !Number.isFinite(cache.time) ||
+        Date.now() - cache.time > RECENT_TTL_MS || Date.now() < cache.time ||
+        !Array.isArray(cache.result?.books)) return null
+    return cache.result
+  } catch { return null }
+}
+export async function recent(page = 1, force = false): Promise<BookPage> {
+  const current = Math.max(1, page)
+  if (current === 1 && !force) {
+    const cache = cachedRecent()
+    if (cache) return cache
   }
+  // The old /recently endpoint often returns only {"success":1};
+  // querying date-sorted Chinese books directly avoids the extra network RTT.
   const query = new URLSearchParams({
-    message: "", order: "date", page: String(targetPage), limit: "20"
+    message: "", order: "date", page: String(current), limit: "20"
   })
-  return parseBookPage(await call("/eapi/book/search", { body: query.toString() }))
+  query.append("languages[]", "chinese")
+  const result = parseBookPage(await call("/eapi/book/search", { body: query.toString() }))
+  if (current === 1) {
+    try { Storage.set("zlibrary-chinese-recent-v2", {domain:readDomain(),time:Date.now(),result}) } catch { /* cache optional */ }
+  }
+  return result
+}
+export async function formats(book: Book): Promise<Book[]> {
+  const payload = await call("/eapi/book/" + book.id + "/" + book.hash + "/formats")
+  const list = payload.books || obj(payload.data).books
+  if (!Array.isArray(list)) throw new Error("此书格式列表无法解析")
+  const variants = list.map(normalizeBook).filter((b): b is Book => b !== null)
+  const unique = new Map<string, Book>()
+  for (const item of [book, ...variants]) {
+    unique.set(item.id + ":" + item.hash, item)
+  }
+  return Array.from(unique.values())
+}
+export function preferredFormat(list: Book[]): Book | null {
+  return list.find(b => b.extension.toLowerCase() === "epub") || list[0] || null
 }
 export async function search(message: string, page = 1, language = "", extension = "", yearFrom = "", yearTo = ""): Promise<BookPage> {
   const values = new URLSearchParams()

@@ -1,11 +1,31 @@
-import { Navigation, TabView, Tab, Script, Text, useState } from "scripting"
+import { Navigation, TabView, Tab, Script, Text, useState, useEffect, useRef, AppEvents } from "scripting"
 import { LatestPage, SearchPage } from "./catalog"
 import { SettingsPage } from "./settings"
+import { profile, readSession } from "./api"
 
 function Root() {
   const dismiss = Navigation.useDismiss()
   const [selected, setSelected] = useState(0)
+  const lastCheck = useRef(0)
+  const checking = useRef(false)
+  function checkSession() {
+    if (!readSession() || checking.current || Date.now() - lastCheck.current < 10 * 60 * 1000) return
+    checking.current = true
+    lastCheck.current = Date.now()
+    void profile().then(() => {
+      try { Storage.set("zlibrary-last-session-verified", Date.now()) } catch {}
+    }).catch(() => {
+      // Network failure is not proof that credentials are invalid.
+    }).finally(() => { checking.current = false })
+  }
+  useEffect(() => {
+    const listener = (phase: string) => { if (phase === "active") checkSession() }
+    AppEvents.scenePhase.addListener(listener)
+    checkSession()
+    return () => AppEvents.scenePhase.removeListener(listener)
+  }, [])
   function onTabIndexChanged(next: number) {
+    checkSession()
     if (next === 3) {
       // Dismiss the modal first; main() then terminates the script instance.
       dismiss()
