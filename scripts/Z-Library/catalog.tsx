@@ -8,6 +8,7 @@ import {
   Choice, YEAR_CHOICES, LANGUAGES, FORMATS, ORDERS, SearchPrefs,
   DEFAULT_PREFS, readSearchPrefs, saveSearchPrefs, searchPrefsLabel
 } from "./search-options"
+import { UI } from "./ui-tokens"
 
 function errorText(e: unknown) { return e instanceof Error ? e.message : String(e) }
 function appendUnique(old: Book[], next: Book[]): Book[] {
@@ -39,8 +40,8 @@ function ChoiceMenu({ options, selected, onChange }: {
 function FilterRow({ title, options, value, onChange }: {
   title: string; options: Choice[]; value: string; onChange: (value: string) => void
 }) {
-  return <HStack spacing={8} frame={{ maxWidth: "infinity", alignment: "leading" }}>
-    <Text>{title}</Text>
+  return <HStack spacing={8} frame={{ maxWidth: "infinity", minHeight: UI.touchHeight, alignment: "leading" }}>
+    <Text font="body" foregroundStyle={UI.primary}>{title}</Text>
     <Spacer />
     <ChoiceMenu options={options} selected={value} onChange={onChange} />
   </HStack>
@@ -72,13 +73,15 @@ export function LatestPage() {
   const canLoadMore = page > 0 && lastBatch === 20 && (total === 0 || books.length < total)
   return <NavigationStack>
     <VStack>
-      <HStack padding={12}>
-        <VStack alignment="leading" spacing={3}>
-          <Text font="title2">中文最新收录</Text>
-          <Text font="caption">按最近添加排序</Text>
+      <HStack padding={{ vertical: 12, horizontal: UI.pageInset }}
+        frame={{ maxWidth: "infinity", alignment: "leading" }}>
+        <VStack alignment="leading" spacing={4}>
+          <Text font="title2" foregroundStyle={UI.primary}>中文最新收录</Text>
+          <Text font="caption" foregroundStyle={UI.secondary}>按最近添加排序</Text>
         </VStack>
         <Spacer />
-        <Button title="刷新" systemImage="arrow.clockwise" disabled={busy} action={() => void load(1, true)} />
+        <Button title="刷新" systemImage="arrow.clockwise" buttonStyle="bordered"
+          disabled={busy} action={() => void load(1, true)} />
       </HStack>
       <Results books={books} busy={busy} error={error} total={total} nextPage={page + 1}
         refresh={() => void load(1, true)} canLoadMore={canLoadMore}
@@ -114,10 +117,11 @@ export function SearchResultsPage({ criteria }: { criteria: SearchPrefs }) {
   const title = criteria.query.trim() || "筛选结果"
   return <VStack navigationTitle="搜索结果" spacing={6}
     frame={{ maxWidth: "infinity", alignment: "leading" }}>
-    <HStack padding={12} frame={{ maxWidth: "infinity", alignment: "leading" }}>
-      <Text font="subheadline" lineLimit={1}>{title}</Text>
+    <HStack padding={{ horizontal: UI.pageInset, vertical: 12 }}
+      frame={{ maxWidth: "infinity", alignment: "leading" }}>
+      <Text font="subheadline" lineLimit={1} foregroundStyle={UI.secondary}>{title}</Text>
       <Spacer />
-      <Text font="caption">{total > 0 ? total + " 本" : ""}</Text>
+      <Text font="caption" foregroundStyle={UI.muted}>{total > 0 ? total + " 本" : ""}</Text>
     </HStack>
     <Results books={books} busy={busy} error={error} total={total} nextPage={page + 1}
       canLoadMore={canLoadMore} refresh={() => void load(1)}
@@ -147,15 +151,18 @@ export function SearchPage() {
   return <NavigationStack>
     <ScrollView scrollDismissesKeyboard="interactively"
       frame={{ maxWidth: "infinity", alignment: "leading" }}>
-      <VStack alignment="leading" spacing={13} padding={16}
+      <VStack alignment="leading" spacing={UI.sectionGap} padding={UI.pageInset}
         frame={{ maxWidth: "infinity", alignment: "leading" }}>
-        <Text font="title2">搜索书籍</Text>
+        <VStack alignment="leading" spacing={5}>
+          <Text font="title2" foregroundStyle={UI.primary}>搜索书籍</Text>
+          <Text font="caption" foregroundStyle={UI.secondary}>可输入关键词，也可以直接使用下方筛选条件</Text>
+        </VStack>
         <TextField title="搜索关键词" prompt="书名、作者、ISBN 或关键词（可留空）"
           value={query} onChanged={setQuery} textFieldStyle="roundedBorder"
           frame={{ maxWidth: "infinity", alignment: "leading" }} />
         <Divider />
-        <HStack spacing={8} frame={{ maxWidth: "infinity" }}>
-          <Text>时间</Text>
+        <HStack spacing={8} frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }}>
+          <Text foregroundStyle={UI.primary}>时间</Text>
           <Spacer />
           <ChoiceMenu options={YEAR_CHOICES} selected={yearFrom} onChange={setYearFrom} />
           <Text>至</Text>
@@ -168,11 +175,12 @@ export function SearchPage() {
         <Divider />
         <FilterRow title="排列方式" options={ORDERS} value={order} onChange={setOrder} />
         {invalidYears ? <Text foregroundStyle="red">开始年份不能晚于结束年份</Text> : null}
-        <HStack frame={{ maxWidth: "infinity" }} spacing={0}>
+        <HStack frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }} spacing={0}>
           <Spacer />
           <NavigationLink destination={<SearchResultsPage criteria={{ ...prefs }} />}
             containerRelativeFrame={{ axes: "horizontal", count: 2, span: 1, spacing: 0 }}
-            buttonStyle="borderedProminent" disabled={invalidYears}>
+            buttonStyle="borderedProminent" buttonBorderShape="roundedRectangle"
+            disabled={invalidYears}>
             <HStack spacing={6}>
               <Image systemName="magnifyingglass" />
               <Text>搜索</Text>
@@ -180,7 +188,7 @@ export function SearchPage() {
           </NavigationLink>
           <Spacer />
         </HStack>
-        <HStack frame={{ maxWidth: "infinity" }} spacing={8}>
+        <HStack frame={{ maxWidth: "infinity", minHeight: UI.touchHeight }} spacing={8}>
           <Spacer />
           <Button title="记住搜索偏好"
             systemImage={remember ? "checkmark.square.fill" : "square"}
