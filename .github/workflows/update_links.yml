@@ -29,10 +29,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install LuaJIT for T9 bridge regression tests
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq luajit
       - name: Validate packager and keyboard runtime
         run: |
           node --test scripts/update_links.test.js
-          node --test scripts/rime输入法/tests/runtime.test.cjs
+          node --test scripts/rime输入法/tests/runtime.test.cjs scripts/rime输入法/tests/t9_bridge.test.cjs
       - name: Package only Rime source
         run: node scripts/update_links.js --project rime输入法
       - name: Verify packaged keyboard matches committed source

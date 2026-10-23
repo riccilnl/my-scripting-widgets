@@ -8,7 +8,8 @@ const cp = require("node:child_process");
 const { stripTypeScriptTypes } = require("node:module");
 
 const repo = path.resolve(__dirname, "../../..");
-const zipPath = path.join(repo, ".git/perf-preview/Rime-compiler-payload-0.3.58-preview.scripting");
+const out = cp.execFileSync("git", ["rev-parse", "--git-path", "perf-preview"], {cwd: repo, encoding: "utf8"}).trim();
+const zipPath = path.join(out, "Rime-compiler-payload-0.3.58-preview.scripting");
 function packagedFile(relative) {
   return cp.execFileSync("python3", ["-B", "-c", [
     "import sys,zipfile",

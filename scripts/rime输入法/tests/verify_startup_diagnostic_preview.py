@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the OTA diagnostics 0.3.59 archive and pinned compatibility URLs.
+"""Check the OTA diagnostics 0.3.60 archive and pinned compatibility URLs.
 
 This is deliberately separate from the one-off independent experiment,
 because the user's existing iPhone project follows the diagnostics OTA channel.
@@ -20,10 +20,11 @@ from create_startup_diagnostic_preview import (
     REMOTE_ARCHIVE_NAME, REMOTE_ARCHIVE_URL
 )
 
-VERSION = "0.3.59"
+VERSION = "0.3.60"
 FROZEN_PREVIOUS_ARCHIVES = {
     "0.3.57": "5fea010126cc97eda89cb1ba376d83b93dad636d29be33fe4554e7246e5ce97f",
     "0.3.58": "5725c42b3e9ae1157772ac6a527a072908eda7f7e808456d731093d26deb065c",
+    "0.3.59": "2f7cd5ac509c1810efb07c7a249d332d7b659f4ebc0b26e8fea18d76ee671ec0",
 }
 
 
@@ -62,10 +63,10 @@ def verify() -> None:
         "keyboard/components/CandidateBar.tsx",
         "keyboard/toolbar/ToolbarStrip.tsx",
         "keyboard/components/T9PinyinColumn.tsx",
-        "core/rime/T9BridgeAsset.ts",
         "keyboard/input/TouchIntentMachine.ts",
     ):
         assert official[relative] == raw_source[relative], "Frozen behavior changed: " + relative
+    assert official["core/rime/T9BridgeAsset.ts"] != raw_source["core/rime/T9BridgeAsset.ts"], "T9 consistency patch missing"
 
     with zipfile.ZipFile(target) as archive:
         names = archive.namelist()
@@ -104,7 +105,7 @@ def verify() -> None:
         assert hashlib.sha256(old_path.read_bytes()).hexdigest() == expected_sha
         assert expected_sha != info["sha256"]
         print("STARTUP_TRACE_FROZEN_PASS", version, expected_sha)
-    print("STARTUP_TRACE_039_SOURCE_PASS", len(source), info["sha256"])
+    print("STARTUP_TRACE_0360_SOURCE_PASS", len(source), info["sha256"])
 
 
 if __name__ == "__main__":

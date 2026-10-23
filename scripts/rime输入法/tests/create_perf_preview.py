@@ -13,7 +13,7 @@ import zipfile
 
 REPO = Path(__file__).resolve().parents[3]
 SOURCE = REPO / "scripts" / "rime输入法"
-OUT = REPO / ".git" / "perf-preview"
+OUT = Path(subprocess.check_output(["git", "rev-parse", "--git-path", "perf-preview"], cwd=REPO, text=True).strip())
 ROOT = "rime输入法"
 RELEASE_SHA = "56125d2c1d481dcb65c83f7f447cb590641a2ec5"
 IGNORE = {"docs", "tests", ".cora", ".colameta", ".git", "node_modules", ".vscode", ".idea"}
