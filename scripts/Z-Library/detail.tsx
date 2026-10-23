@@ -38,26 +38,26 @@ export function BookDetails({ book }: { book: Book }) {
     } catch (e) { setMessage(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(false) }
   }
-  return <ScrollView>
-    <VStack alignment="leading" spacing={14} padding={16}>
-      <HStack spacing={14}>
+  return <ScrollView frame={{ maxWidth: "infinity" }}>
+    <VStack alignment="leading" spacing={14} padding={16} frame={{ maxWidth: "infinity" }}>
+      <HStack spacing={14} frame={{ maxWidth: "infinity" }}>
         {current.cover.startsWith("https://")
           ? <Image imageUrl={current.cover} resizable={true}
               aspectRatio={{ contentMode: "fit" }} frame={{ width: 122, height: 173 }} />
           : <Image systemName="book.closed" aspectRatio={{ contentMode: "fit" }}
               frame={{ width: 122, height: 173 }} />}
-        <VStack alignment="leading" spacing={8}>
+        <VStack alignment="leading" spacing={8} frame={{ maxWidth: "infinity" }}>
           <Text font="title3" lineLimit={4}>{current.title}</Text>
           <Text font="subheadline">{current.author || "作者未知"}</Text>
           <Text font="caption">{[current.language, current.year].filter(Boolean).join(" · ")}</Text>
           <Text font="caption">当前版本：{current.extension || "未知格式"}</Text>
         </VStack>
       </HStack>
-      <VStack alignment="leading" spacing={6}>
+      <VStack alignment="leading" spacing={6} frame={{ maxWidth: "infinity" }}>
         <Text font="headline">图书介绍</Text>
         <Text font="body" lineLimit={5}>{toText(current.description) || "暂无图书介绍"}</Text>
       </VStack>
-      <VStack alignment="leading" spacing={8}>
+      <VStack alignment="leading" spacing={8} frame={{ maxWidth: "infinity" }}>
         <Text font="headline">下载格式</Text>
         <HStack spacing={8}>
           {options.map(item =>
@@ -68,10 +68,10 @@ export function BookDetails({ book }: { book: Book }) {
         {selected.size ? <Text font="caption">文件大小：{selected.size}</Text> : null}
         {formatNotice ? <Text font="caption">{formatNotice}</Text> : null}
       </VStack>
-      <Button title={busy ? "正在下载…" : "下载 " + (selected.extension || "文件").toUpperCase()}
-        systemImage="arrow.down.to.line" disabled={busy} action={() => void save()} />
-      {file ? <Button title="分享或另存文件" systemImage="square.and.arrow.up"
-        action={() => void ShareSheet.present([file])} /> : null}
+      <Button title={file ? "分享或另存文件" : busy ? "正在下载…" : "下载 " + (selected.extension || "文件").toUpperCase()}
+        systemImage={file ? "square.and.arrow.up" : "arrow.down.to.line"}
+        frame={{ maxWidth: "infinity" }} disabled={busy}
+        action={() => { if (file) void ShareSheet.present([file]); else void save() }} />
       {message ? <Text>{message}</Text> : null}
     </VStack>
   </ScrollView>
