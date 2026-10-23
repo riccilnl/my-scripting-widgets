@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "../../dts/*.d.ts",
+    "./*.ts",
+    "./*.tsx"
+  ],
+  "exclude": []
+}
