@@ -1,6 +1,6 @@
 {
   "name": "Z-Library",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "图书浏览搜索、账号登录与文件保存",
   "icon": "books.vertical",
   "color": "rgba(56,116,201,1)",

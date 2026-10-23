@@ -61,8 +61,11 @@ test("detail adopts full-width layout before download and after status update", 
   const root=elements.find(x=>x.type==="VStack");
   const hero=elements.find(x=>x.type==="HStack");
   assert.equal(scroll.props.frame.maxWidth,"infinity");
+  assert.equal(scroll.props.frame.alignment,"leading");
   assert.equal(root.props.frame.maxWidth,"infinity");
+  assert.equal(root.props.frame.alignment,"leading");
   assert.equal(hero.props.frame.maxWidth,"infinity");
+  assert.equal(hero.props.frame.alignment,"leading");
   assert.equal(action(view).length,1);
   assert.equal(action(view)[0].props.title,"下载 EPUB");
   const button=action(view)[0];
@@ -72,10 +75,19 @@ test("detail adopts full-width layout before download and after status update", 
   assert.equal(action(view).length,1);
   assert.equal(action(view)[0].props.title,"分享或另存文件");
   assert.equal(nodes(view).find(x=>x.type==="VStack").props.frame.maxWidth,"infinity");
+  assert.equal(nodes(view).find(x=>x.type==="VStack").props.frame.alignment,"leading");
   assert.deepEqual(downloadCalls,["101"]);
   action(view)[0].props.action();
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(sharedPath,"/Documents/Z-Library/Book.epub");
+});
+
+test("every expanded-width detail section must explicitly align to the leading edge", () => {
+  hooks=[];
+  const view=render(book);
+  const expanded=nodes(view).filter(n => n.props?.frame?.maxWidth==="infinity");
+  assert.equal(expanded.length,7);
+  for (const node of expanded) assert.equal(node.props.frame.alignment,"leading");
 });
 
 test("detail introduction stays five lines and covers fit", () => {
