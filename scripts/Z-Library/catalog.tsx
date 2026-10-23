@@ -1,6 +1,6 @@
 import {
-  NavigationStack, VStack, HStack, Spacer, Text, Button, TextField, Image,
-  Menu, GeometryReader, Divider, useState, useEffect, useRef
+  NavigationStack, NavigationLink, ScrollView, VStack, HStack, Spacer,
+  Text, Button, TextField, Image, Menu, Divider, useState, useEffect, useRef, useColorScheme
 } from "scripting"
 import { Book, cachedRecent, recent, search } from "./api"
 import { Results } from "./results"
@@ -23,9 +23,13 @@ function appendUnique(old: Book[], next: Book[]): Book[] {
 function ChoiceMenu({ options, selected, onChange }: {
   options: Choice[]; selected: string; onChange: (value: string) => void
 }) {
-  return <Menu label={<HStack spacing={4}>
-    <Text foregroundStyle="blue">{searchPrefsLabel(options, selected)}</Text>
-    <Image systemName="chevron.down" />
+  // Ensure the selection and chevron remain readable in both light and
+  // dark appearances instead of inheriting low-contrast link tint.
+  const scheme = useColorScheme()
+  const ink = scheme === "dark" ? "white" : "black"
+  return <Menu label={<HStack spacing={6}>
+    <Text foregroundStyle={ink}>{searchPrefsLabel(options, selected)}</Text>
+    <Image systemName="chevron.down" foregroundStyle={ink} />
   </HStack>}>
     {options.map(item => <Button key={item.value}
       title={(selected === item.value ? "✓ " : "") + item.label}
@@ -76,11 +80,49 @@ export function LatestPage() {
         <Spacer />
         <Button title="刷新" systemImage="arrow.clockwise" disabled={busy} action={() => void load(1, true)} />
       </HStack>
-      <Results books={books} busy={busy} error={error} total={total} nextPage={page+1}
+      <Results books={books} busy={busy} error={error} total={total} nextPage={page + 1}
         refresh={() => void load(1, true)} canLoadMore={canLoadMore}
         loadMore={() => void load(page + 1)} />
     </VStack>
   </NavigationStack>
+}
+
+/** The results own their request lifecycle and pagination; they are never
+ * rendered inside the search form and the active filters are immutable. */
+export function SearchResultsPage({ criteria }: { criteria: SearchPrefs }) {
+  const [books, setBooks] = useState<Book[]>([])
+  const [page, setPage] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [lastBatch, setLastBatch] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const lock = useRef(false)
+  async function load(next: number) {
+    if (lock.current) return
+    lock.current = true; setBusy(true); setError("")
+    try {
+      const data = await search(criteria.query, next, criteria.language, criteria.format,
+        criteria.yearFrom, criteria.yearTo, criteria.order)
+      setBooks(prev => next === 1 ? data.books : appendUnique(prev, data.books))
+      setPage(next); setLastBatch(data.books.length); setTotal(data.total)
+    } catch (e) { setError(errorText(e)) }
+    finally { lock.current = false; setBusy(false) }
+  }
+  useEffect(() => { void load(1) }, [])
+  const canLoadMore = page > 0 && lastBatch === 20 &&
+    (total === 0 || books.length < total)
+  const title = criteria.query.trim() || "筛选结果"
+  return <VStack navigationTitle="搜索结果" spacing={6}
+    frame={{ maxWidth: "infinity", alignment: "leading" }}>
+    <HStack padding={12} frame={{ maxWidth: "infinity", alignment: "leading" }}>
+      <Text font="subheadline" lineLimit={1}>{title}</Text>
+      <Spacer />
+      <Text font="caption">{total > 0 ? total + " 本" : ""}</Text>
+    </HStack>
+    <Results books={books} busy={busy} error={error} total={total} nextPage={page + 1}
+      canLoadMore={canLoadMore} refresh={() => void load(1)}
+      loadMore={() => void load(page + 1)} />
+  </VStack>
 }
 
 export function SearchPage() {
@@ -93,15 +135,6 @@ export function SearchPage() {
   const [yearTo, setYearTo] = useState(initial.yearTo)
   const [order, setOrder] = useState(initial.order)
   const [remember, setRemember] = useState(previous !== null)
-  const [term, setTerm] = useState("")
-  const [books, setBooks] = useState<Book[]>([])
-  const [page, setPage] = useState(0)
-  const [total, setTotal] = useState(0)
-  const [lastBatch, setLastBatch] = useState(0)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
-  const lock = useRef(false)
-  const activeFilters = useRef<SearchPrefs | null>(null)
   const prefs: SearchPrefs = {query, yearFrom, yearTo, language, format, order}
   useEffect(() => {
     if (remember) saveSearchPrefs(prefs)
@@ -110,40 +143,22 @@ export function SearchPage() {
     setRemember(next)
     saveSearchPrefs(next ? prefs : null)
   }
-  async function load(next: number, requested?: SearchPrefs) {
-    if (lock.current) return
-    const settings = next === 1 ? (requested || prefs) : activeFilters.current
-    if (!settings || !settings.query.trim()) return
-    if (settings.yearFrom && settings.yearTo && Number(settings.yearFrom) > Number(settings.yearTo)) {
-      setError("开始年份不能晚于结束年份")
-      return
-    }
-    lock.current = true; setBusy(true); setError("")
-    if (next === 1) activeFilters.current = {...settings}
-    try {
-      const data = await search(settings.query, next, settings.language, settings.format,
-        settings.yearFrom, settings.yearTo, settings.order)
-      setBooks(prev => next === 1 ? data.books : appendUnique(prev, data.books))
-      setPage(next); setLastBatch(data.books.length); setTotal(data.total)
-      setTerm(settings.query)
-    } catch (e) { setError(errorText(e)) }
-    finally { lock.current = false; setBusy(false) }
-  }
-  const canLoadMore = page > 0 && lastBatch === 20 && (total === 0 || books.length < total)
+  const invalidYears = !!(yearFrom && yearTo && Number(yearFrom) > Number(yearTo))
   return <NavigationStack>
-    <VStack spacing={8} frame={{ maxWidth: "infinity", alignment: "leading" }}>
-      <VStack alignment="leading" spacing={10}
-        padding={{ top: 12, leading: 16, trailing: 16, bottom: 4 }}
+    <ScrollView scrollDismissesKeyboard="interactively"
+      frame={{ maxWidth: "infinity", alignment: "leading" }}>
+      <VStack alignment="leading" spacing={13} padding={16}
         frame={{ maxWidth: "infinity", alignment: "leading" }}>
         <Text font="title2">搜索书籍</Text>
-        <TextField title="搜索关键词" prompt="书名、作者、ISBN 或关键词"
-          value={query} onChanged={setQuery} frame={{ maxWidth: "infinity" }} />
+        <TextField title="搜索关键词" prompt="书名、作者、ISBN 或关键词（可留空）"
+          value={query} onChanged={setQuery} textFieldStyle="roundedBorder"
+          frame={{ maxWidth: "infinity", alignment: "leading" }} />
         <Divider />
         <HStack spacing={8} frame={{ maxWidth: "infinity" }}>
           <Text>时间</Text>
           <Spacer />
           <ChoiceMenu options={YEAR_CHOICES} selected={yearFrom} onChange={setYearFrom} />
-          <Text foregroundStyle="gray">至</Text>
+          <Text>至</Text>
           <ChoiceMenu options={YEAR_CHOICES} selected={yearTo} onChange={setYearTo} />
         </HStack>
         <Divider />
@@ -152,28 +167,27 @@ export function SearchPage() {
         <FilterRow title="格式" options={FORMATS} value={format} onChange={setFormat} />
         <Divider />
         <FilterRow title="排列方式" options={ORDERS} value={order} onChange={setOrder} />
-        <GeometryReader frame={{height: 48}}>
-          {proxy => <HStack frame={{ maxWidth: "infinity" }}>
-            <Spacer />
-            <Button title={busy ? "正在搜索…" : "搜索"}
-              systemImage="magnifyingglass" buttonStyle="borderedProminent"
-              frame={{ width: Math.max(130, proxy.size.width / 2) }}
-              disabled={busy || !query.trim()} action={() => void load(1, prefs)} />
-            <Spacer />
-          </HStack>}
-        </GeometryReader>
-        <HStack frame={{ maxWidth: "infinity" }}>
+        {invalidYears ? <Text foregroundStyle="red">开始年份不能晚于结束年份</Text> : null}
+        <HStack frame={{ maxWidth: "infinity" }} spacing={0}>
+          <Spacer />
+          <NavigationLink destination={<SearchResultsPage criteria={{ ...prefs }} />}
+            containerRelativeFrame={{ axes: "horizontal", count: 2, span: 1, spacing: 0 }}
+            buttonStyle="borderedProminent" disabled={invalidYears}>
+            <HStack spacing={6}>
+              <Image systemName="magnifyingglass" />
+              <Text>搜索</Text>
+            </HStack>
+          </NavigationLink>
+          <Spacer />
+        </HStack>
+        <HStack frame={{ maxWidth: "infinity" }} spacing={8}>
           <Spacer />
           <Button title="记住搜索偏好"
             systemImage={remember ? "checkmark.square.fill" : "square"}
             buttonStyle="plain" action={() => setRememberPreference(!remember)} />
           <Spacer />
         </HStack>
-        {term ? <Text font="caption">「{term}」的搜索结果：{total}</Text> : null}
       </VStack>
-      <Results books={books} busy={busy} error={error} total={total} nextPage={page+1}
-        canLoadMore={canLoadMore} refresh={() => void load(1, activeFilters.current || prefs)}
-        loadMore={() => void load(page + 1)} />
-    </VStack>
+    </ScrollView>
   </NavigationStack>
 }

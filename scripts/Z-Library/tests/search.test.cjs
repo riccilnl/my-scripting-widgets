@@ -108,7 +108,10 @@ test("search form contains all requested controls and filter snapshot",()=>{
   const source=fs.readFileSync(path.join(base,"catalog.tsx"),"utf8");
   for (const value of ["搜索书籍","时间","语言","格式","排列方式","记住搜索偏好"])
     assert.ok(source.includes(value),value);
-  assert.match(source,/activeFilters\.current/);
-  assert.match(source,/proxy\.size\.width \/ 2/);
+  assert.match(source,/SearchResultsPage/);
+  assert.match(source,/NavigationLink destination=\{<SearchResultsPage/);
+  assert.match(source,/containerRelativeFrame=\{\{ axes: "horizontal", count: 2/);
+  assert.match(source,/scrollDismissesKeyboard="interactively"/);
   assert.match(source,/saveSearchPrefs/);
+  assert.doesNotMatch(source,/!query\.trim\(\)/);
 });
