@@ -71,12 +71,12 @@ test("automatic scroll pagination, fitted covers, detail limit, session check an
   assert.match(read("results.tsx"),/contentMode: "fit"/);
   assert.doesNotMatch(read("results.tsx"),/加载更多（第/);
   assert.match(read("catalog.tsx"),/中文最新收录/);
-  assert.match(read("catalog.tsx"),/筛选条件/);
+  assert.match(read("catalog.tsx"),/排列方式/);
   assert.match(read("detail.tsx"),/lineLimit=\{5\}/);
   assert.match(read("detail.tsx"),/preferredFormat/);
   assert.match(read("index.tsx"),/AppEvents.scenePhase/);
   assert.match(read("index.tsx"),/Script.exit/);
   const meta=JSON.parse(read("script.json"));
-  assert.equal(meta.version,"0.2.2");
+  assert.equal(meta.version,"0.3.0");
   assert.equal(meta.remoteResource.url,"https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/main/Z-Library.zip");
 });

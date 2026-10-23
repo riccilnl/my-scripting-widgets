@@ -166,11 +166,12 @@ export async function formats(book: Book): Promise<Book[]> {
 export function preferredFormat(list: Book[]): Book | null {
   return list.find(b => b.extension.toLowerCase() === "epub") || list[0] || null
 }
-export async function search(message: string, page = 1, language = "", extension = "", yearFrom = "", yearTo = ""): Promise<BookPage> {
+export async function search(message: string, page = 1, language = "", extension = "", yearFrom = "", yearTo = "", order = "relevance"): Promise<BookPage> {
   const values = new URLSearchParams()
   values.set("message", message.trim())
   values.set("page", String(Math.max(1, page)))
   values.set("limit", "20")
+  if (order) values.set("order", order)
   if (language) values.append("languages[]", language)
   if (extension) values.append("extensions[]", extension.toLowerCase())
   if (/^\d{4}$/.test(yearFrom)) values.set("yearFrom", yearFrom)

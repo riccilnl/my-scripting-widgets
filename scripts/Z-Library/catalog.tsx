@@ -1,9 +1,13 @@
 import {
-  NavigationStack, VStack, HStack, Spacer, Text, Button, TextField,
-  useState, useEffect, useRef
+  NavigationStack, VStack, HStack, Spacer, Text, Button, TextField, Image,
+  Menu, GeometryReader, Divider, useState, useEffect, useRef
 } from "scripting"
 import { Book, cachedRecent, recent, search } from "./api"
 import { Results } from "./results"
+import {
+  Choice, YEAR_CHOICES, LANGUAGES, FORMATS, ORDERS, SearchPrefs,
+  DEFAULT_PREFS, readSearchPrefs, saveSearchPrefs, searchPrefsLabel
+} from "./search-options"
 
 function errorText(e: unknown) { return e instanceof Error ? e.message : String(e) }
 function appendUnique(old: Book[], next: Book[]): Book[] {
@@ -16,6 +20,27 @@ function appendUnique(old: Book[], next: Book[]): Book[] {
   }))
 }
 
+function ChoiceMenu({ options, selected, onChange }: {
+  options: Choice[]; selected: string; onChange: (value: string) => void
+}) {
+  return <Menu label={<HStack spacing={4}>
+    <Text foregroundStyle="blue">{searchPrefsLabel(options, selected)}</Text>
+    <Image systemName="chevron.down" />
+  </HStack>}>
+    {options.map(item => <Button key={item.value}
+      title={(selected === item.value ? "✓ " : "") + item.label}
+      action={() => onChange(item.value)} />)}
+  </Menu>
+}
+function FilterRow({ title, options, value, onChange }: {
+  title: string; options: Choice[]; value: string; onChange: (value: string) => void
+}) {
+  return <HStack spacing={8} frame={{ maxWidth: "infinity", alignment: "leading" }}>
+    <Text>{title}</Text>
+    <Spacer />
+    <ChoiceMenu options={options} selected={value} onChange={onChange} />
+  </HStack>
+}
 export function LatestPage() {
   const cached = cachedRecent()
   const [books, setBooks] = useState<Book[]>(cached?.books || [])
@@ -51,7 +76,7 @@ export function LatestPage() {
         <Spacer />
         <Button title="刷新" systemImage="arrow.clockwise" disabled={busy} action={() => void load(1, true)} />
       </HStack>
-      <Results books={books} busy={busy} error={error} total={total}
+      <Results books={books} busy={busy} error={error} total={total} nextPage={page+1}
         refresh={() => void load(1, true)} canLoadMore={canLoadMore}
         loadMore={() => void load(page + 1)} />
     </VStack>
@@ -59,13 +84,16 @@ export function LatestPage() {
 }
 
 export function SearchPage() {
-  const [query, setQuery] = useState("")
+  const previous = readSearchPrefs()
+  const initial = previous || DEFAULT_PREFS
+  const [query, setQuery] = useState(initial.query)
+  const [language, setLanguage] = useState(initial.language)
+  const [format, setFormat] = useState(initial.format)
+  const [yearFrom, setYearFrom] = useState(initial.yearFrom)
+  const [yearTo, setYearTo] = useState(initial.yearTo)
+  const [order, setOrder] = useState(initial.order)
+  const [remember, setRemember] = useState(previous !== null)
   const [term, setTerm] = useState("")
-  const [language, setLanguage] = useState("")
-  const [format, setFormat] = useState("")
-  const [yearFrom, setYearFrom] = useState("")
-  const [yearTo, setYearTo] = useState("")
-  const [filters, setFilters] = useState(false)
   const [books, setBooks] = useState<Book[]>([])
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
@@ -73,47 +101,78 @@ export function SearchPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const lock = useRef(false)
-  async function load(next: number, word = term) {
-    if (lock.current || !word.trim()) return
+  const activeFilters = useRef<SearchPrefs | null>(null)
+  const prefs: SearchPrefs = {query, yearFrom, yearTo, language, format, order}
+  useEffect(() => {
+    if (remember) saveSearchPrefs(prefs)
+  }, [remember, query, yearFrom, yearTo, language, format, order])
+  function setRememberPreference(next: boolean) {
+    setRemember(next)
+    saveSearchPrefs(next ? prefs : null)
+  }
+  async function load(next: number, requested?: SearchPrefs) {
+    if (lock.current) return
+    const settings = next === 1 ? (requested || prefs) : activeFilters.current
+    if (!settings || !settings.query.trim()) return
+    if (settings.yearFrom && settings.yearTo && Number(settings.yearFrom) > Number(settings.yearTo)) {
+      setError("开始年份不能晚于结束年份")
+      return
+    }
     lock.current = true; setBusy(true); setError("")
+    if (next === 1) activeFilters.current = {...settings}
     try {
-      const data = await search(word, next, language, format, yearFrom, yearTo)
+      const data = await search(settings.query, next, settings.language, settings.format,
+        settings.yearFrom, settings.yearTo, settings.order)
       setBooks(prev => next === 1 ? data.books : appendUnique(prev, data.books))
-      setPage(next); setLastBatch(data.books.length); setTotal(data.total); setTerm(word)
+      setPage(next); setLastBatch(data.books.length); setTotal(data.total)
+      setTerm(settings.query)
     } catch (e) { setError(errorText(e)) }
     finally { lock.current = false; setBusy(false) }
   }
   const canLoadMore = page > 0 && lastBatch === 20 && (total === 0 || books.length < total)
   return <NavigationStack>
-    <VStack spacing={10}>
-      <HStack padding={{ top: 12, leading: 12, trailing: 12 }} spacing={8}>
-        <TextField title="图书搜索" prompt="书名 / 作者 / ISBN / 关键词" value={query} onChanged={setQuery} />
-        <Button title="搜索" systemImage="magnifyingglass" disabled={busy || !query.trim()} action={() => void load(1, query)} />
-      </HStack>
-      <HStack padding={{ leading: 12, trailing: 12 }} spacing={10}>
-        <Button title={filters ? "收起筛选" : "筛选条件"} systemImage="slider.horizontal.3" action={() => setFilters(!filters)} />
-        <Spacer />
-        <Text font="caption">{term ? "结果 " + total : "输入内容后搜索"}</Text>
-      </HStack>
-      {filters ? <VStack alignment="leading" spacing={8} padding={{ leading: 12, trailing: 12, bottom: 8 }}>
-        <Text font="subheadline">语言</Text>
-        <HStack spacing={8}>
-          {(["", "chinese", "english"] as const).map((v, i) =>
-            <Button key={v} title={(language === v ? "✓ " : "") + ["全部", "中文", "英文"][i]} action={() => setLanguage(v)} />)}
+    <VStack spacing={8} frame={{ maxWidth: "infinity", alignment: "leading" }}>
+      <VStack alignment="leading" spacing={10}
+        padding={{ top: 12, leading: 16, trailing: 16, bottom: 4 }}
+        frame={{ maxWidth: "infinity", alignment: "leading" }}>
+        <Text font="title2">搜索书籍</Text>
+        <TextField title="搜索关键词" prompt="书名、作者、ISBN 或关键词"
+          value={query} onChanged={setQuery} frame={{ maxWidth: "infinity" }} />
+        <Divider />
+        <HStack spacing={8} frame={{ maxWidth: "infinity" }}>
+          <Text>时间</Text>
+          <Spacer />
+          <ChoiceMenu options={YEAR_CHOICES} selected={yearFrom} onChange={setYearFrom} />
+          <Text foregroundStyle="gray">至</Text>
+          <ChoiceMenu options={YEAR_CHOICES} selected={yearTo} onChange={setYearTo} />
         </HStack>
-        <Text font="subheadline">文件格式</Text>
-        <HStack spacing={8}>
-          {(["", "epub", "pdf", "mobi"] as const).map((v, i) =>
-            <Button key={v} title={(format === v ? "✓ " : "") + ["全部", "EPUB", "PDF", "MOBI"][i]} action={() => setFormat(v)} />)}
+        <Divider />
+        <FilterRow title="语言" options={LANGUAGES} value={language} onChange={setLanguage} />
+        <Divider />
+        <FilterRow title="格式" options={FORMATS} value={format} onChange={setFormat} />
+        <Divider />
+        <FilterRow title="排列方式" options={ORDERS} value={order} onChange={setOrder} />
+        <GeometryReader frame={{height: 48}}>
+          {proxy => <HStack frame={{ maxWidth: "infinity" }}>
+            <Spacer />
+            <Button title={busy ? "正在搜索…" : "搜索"}
+              systemImage="magnifyingglass" buttonStyle="borderedProminent"
+              frame={{ width: Math.max(130, proxy.size.width / 2) }}
+              disabled={busy || !query.trim()} action={() => void load(1, prefs)} />
+            <Spacer />
+          </HStack>}
+        </GeometryReader>
+        <HStack frame={{ maxWidth: "infinity" }}>
+          <Spacer />
+          <Button title="记住搜索偏好"
+            systemImage={remember ? "checkmark.square.fill" : "square"}
+            buttonStyle="plain" action={() => setRememberPreference(!remember)} />
+          <Spacer />
         </HStack>
-        <HStack spacing={8}>
-          <TextField title="起始年份" prompt="例如 2020" value={yearFrom} onChanged={setYearFrom} />
-          <TextField title="截止年份" prompt="例如 2026" value={yearTo} onChanged={setYearTo} />
-        </HStack>
-        <Text font="caption">更改条件后点击搜索应用筛选</Text>
-      </VStack> : null}
-      <Results books={books} busy={busy} error={error} total={total}
-        canLoadMore={canLoadMore} refresh={() => void load(1, term)}
+        {term ? <Text font="caption">「{term}」的搜索结果：{total}</Text> : null}
+      </VStack>
+      <Results books={books} busy={busy} error={error} total={total} nextPage={page+1}
+        canLoadMore={canLoadMore} refresh={() => void load(1, activeFilters.current || prefs)}
         loadMore={() => void load(page + 1)} />
     </VStack>
   </NavigationStack>

@@ -18,11 +18,23 @@ function Row({ book }: { book: Book }) {
   </NavigationLink>
 }
 
-export function Results({ books, busy, error, total, refresh, loadMore, canLoadMore, showRefresh = false }: {
+export function Results({ books, busy, error, total, refresh, loadMore, canLoadMore, nextPage, showRefresh = false }: {
   books: Book[]; busy: boolean; error: string; total: number
-  refresh: () => void; loadMore: () => void; canLoadMore: boolean; showRefresh?: boolean
+  refresh: () => void; loadMore: () => void; canLoadMore: boolean; nextPage: number; showRefresh?: boolean
 }) {
-  return <List>
+  function reachEnd() {
+    if (canLoadMore && !busy && !error && books.length > 0) loadMore()
+  }
+  return <List onScrollGeometryChange={{
+    of: "geometry",
+    onChanged: (_old, geometry) => {
+      // Observing the List itself is more reliable than visibility-only
+      // callbacks attached to children inside lazy Section containers.
+      const bottom = geometry.contentOffset.y + geometry.containerSize.height
+      if (geometry.contentSize.height > geometry.containerSize.height &&
+          bottom + 160 >= geometry.contentSize.height) reachEnd()
+    }
+  }}>
     {error ? <Section>
       <Text foregroundStyle="red">{error}</Text>
       <Button title="重试" action={refresh} disabled={busy} />
@@ -34,9 +46,11 @@ export function Results({ books, busy, error, total, refresh, loadMore, canLoadM
       {showRefresh ? <Button title="刷新" systemImage="arrow.clockwise" action={refresh} disabled={busy} /> : null}
       {busy && books.length > 0 ? <Text font="caption">正在加载下一页…</Text> : null}
       {canLoadMore && !busy && !error && books.length > 0 ?
-        <Text font="caption" onScrollVisibilityChange={{ threshold: 0.2, onChanged: visible => {
-          if (visible) loadMore()
-        }}}>向下滚动自动加载更多</Text> : null}
+        <Text key={"page-sentinel-" + nextPage} font="caption"
+          onAppear={reachEnd}
+          onScrollVisibilityChange={{ threshold: 0.2, onChanged: visible => {
+            if (visible) reachEnd()
+          }}}>正在准备第 {nextPage} 页…</Text> : null}
       {!canLoadMore && !busy && books.length > 0 ?
         <Text font="caption">已显示全部{total > 0 ? " " + total + " " : ""}条结果</Text> : null}
     </Section>
