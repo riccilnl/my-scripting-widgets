@@ -27,3 +27,8 @@
 - 本机 Git 无推送认证时，使用已连接 GitHub 插件更新远端 Git tree/commit/ref，并由 GitHub Actions 构建发布；不得因直接 `git push` 失败就停止。工作流如需更新，应注意 Actions 默认 token 缺少 `workflows` 权限；避免让自动化提交包含工作流文件。
 - **验收门槛是线上事实**：检查远端 `main` 的 `script.json` 版本、实际发布的 `.scripting` 包及 CI 发布结果；确认后才向用户报告“已发布/可更新”。如远端未发布成功，继续排障并重试，不能把本地完成表述为交付。
 - 检查本地未提交/未推送改动，避免覆盖用户或其他任务的工作；远端发布后安全地同步 Fedora 工作区，禁止盲目强制重置。
+
+## 远程更新配置（所有脚本发布必检）
+- 新建或修改 Scripting 脚本时，必须在 script.json 中设置正确的 remoteResource.url，指向 GitHub main 分支该脚本稳定的 .scripting 安装包 URL；不使用临时链接或 commit 固定链接。
+- 默认配置 remoteResource.autoUpdateInterval 为 3600 秒；如有不同更新策略，须记录理由。手机端全局自动更新开关与脚本自身配置是两个独立条件。
+- 每次发布须验证版本号、远程更新 URL、更新间隔，并检查线上 .scripting ZIP 包内的 script.json 与源码一致。只有线上安装包与固定 URL 验证通过，才可报告“可远程更新”。
