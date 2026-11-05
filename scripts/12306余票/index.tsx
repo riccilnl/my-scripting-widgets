@@ -1,9 +1,9 @@
-import { Navigation, NavigationStack, DatePicker, ScrollView, VStack, HStack, Text, TextField, Button, Spacer, Divider, Script, useState } from "scripting"
+import { Navigation, NavigationStack, Image, DatePicker, ScrollView, VStack, HStack, Text, TextField, Button, Spacer, Divider, Script, useState } from "scripting"
 import { searchTickets, trainStops, combineTransfers, Train, Stop, Connection } from "./api"
 
 const PURPLE = "rgba(78,54,218,1)"
-const DARK = "rgba(39,23,137,1)"
-const LIGHT = "rgba(245,245,252,1)"
+const DARK = "rgba(47,30,145,1)"
+const LIGHT = "rgba(246,246,252,1)"
 const INK = "rgba(23,28,51,1)"
 const MUTED = "rgba(103,109,135,1)"
 const GREEN = "rgba(30,160,112,1)"
@@ -15,32 +15,79 @@ function Seat({name,count}:{name:string,count:string}) {
   const available = count !== "--" && count !== "无" && count !== "0"
   return <HStack spacing={4}><Text font="caption" foregroundStyle={INK}>{name}</Text><Text font="caption" fontWeight="semibold" foregroundStyle={available ? GREEN : MUTED}>{count === "--" ? "—" : available && !/^\d+$/.test(count) ? "有" : count}</Text></HStack>
 }
+function Symbol({name,color=PURPLE,size=19}:{name:string,color?:string,size?:number}) {
+  return <Image systemName={name} resizable scaleToFit frame={{width:size,height:size}} foregroundStyle={color}/>
+}
 function Header({title,subtitle,back}:{title:string,subtitle?:string,back?:()=>void}) {
-  return <VStack spacing={12} padding={{horizontal:18,top:22,bottom:20}} background={DARK}>
-    <HStack spacing={12}>
-      {back ? <Button title="❮" action={back} tint="white" /> : <Text font="title2" foregroundStyle="white">▣</Text>}
-      <Spacer/><Text font="title3" fontWeight="bold" foregroundStyle="white">{title}</Text><Spacer/>
-      {back ? <Text foregroundStyle={DARK}>❮</Text> : <Text foregroundStyle="white">ⓘ</Text>}
+  return <VStack spacing={9} padding={{horizontal:20,top:17,bottom:18}} background={DARK}>
+    <HStack spacing={10}>
+      {back ? <Button action={back} buttonStyle="plain"><Symbol name="chevron.left" color="white" size={19}/></Button> : <Symbol name="tram.fill" color="white" size={22}/>}
+      <Spacer/>
+      <Text font="headline" fontWeight="bold" foregroundStyle="white">{title}</Text>
+      <Spacer/>
+      {back ? <Symbol name="chevron.left" color={DARK} size={19}/> : <Symbol name="questionmark.circle.fill" color="white" size={21}/>}
     </HStack>
-    {subtitle ? <Text font="subheadline" foregroundStyle="rgba(222,218,255,1)" multilineTextAlignment="center">{subtitle}</Text> : null}
+    {subtitle ? <Text font="caption" foregroundStyle="rgba(224,220,255,1)" multilineTextAlignment="center">{subtitle}</Text> : null}
   </VStack>
 }
 function Panel({children}:{children:any}) {
   return <VStack spacing={12} padding={14} background="white" clipShape={{type:"rect",cornerRadius:16}}>{children}</VStack>
 }
 function Field({title,value,change}:{title:string,value:string,change:(s:string)=>void}) {
-  return <VStack alignment="leading" spacing={5}>
+  return <VStack alignment="leading" spacing={5} frame={{maxWidth:"infinity",alignment:"leading"}}>
     <Text font="caption" foregroundStyle={MUTED}>{title}</Text>
-    <TextField title={title} value={value} onChanged={change} foregroundStyle={INK} background={LIGHT} padding={8} clipShape={{type:"rect",cornerRadius:10}}/>
+    <TextField title={title} value={value} onChanged={change} foregroundStyle={INK} background={LIGHT} padding={{horizontal:9,vertical:8}} clipShape={{type:"rect",cornerRadius:11}} frame={{maxWidth:"infinity"}}/>
   </VStack>
 }
-function MainButton({title,action,disabled}:{title:string,action:()=>void,disabled?:boolean}) {
-  return <Button title={title} action={action} disabled={disabled} buttonStyle="borderedProminent" tint={PURPLE} controlSize="large"/>
+function Stations({from,to,setFrom,setTo}:{from:string,to:string,setFrom:(v:string)=>void,setTo:(v:string)=>void}) {
+  return <HStack spacing={8} frame={{maxWidth:"infinity"}}>
+    <Field title="出发站" value={from} change={setFrom}/>
+    <Button action={()=>{setFrom(to);setTo(from)}} buttonStyle="plain">
+      <VStack padding={8} background="rgba(240,238,255,1)" clipShape={{type:"circle"}}>
+        <Symbol name="arrow.left.arrow.right" size={18}/>
+      </VStack>
+    </Button>
+    <Field title="到达站" value={to} change={setTo}/>
+  </HStack>
 }
-function Filters({type,setType}:{type:string,setType:(v:string)=>void}) {
-  return <ScrollView axes="horizontal"><HStack spacing={7}>
-    {["全部","高铁","城际","动车","普速"].map(v=><Button key={v} title={v} action={()=>setType(v)} buttonStyle={type===v?"borderedProminent":"bordered"} tint={PURPLE}/>)}
-  </HStack></ScrollView>
+function DateRow({date,setDate}:{date:string,setDate:(v:string)=>void}) {
+  return <HStack spacing={10} frame={{maxWidth:"infinity"}}>
+    <Symbol name="calendar" color={MUTED} size={18}/>
+    <Text foregroundStyle={INK}>出发日期</Text>
+    <Spacer/>
+    <DatePicker title="" value={new Date(date+"T12:00:00+08:00").getTime()} onChanged={v=>setDate(new Date(v+8*3600000).toISOString().slice(0,10))} startDate={new Date(todayChina()+"T00:00:00+08:00").getTime()} displayedComponents={["date"]} datePickerStyle="compact" labelsHidden/>
+    <Symbol name="chevron.right" size={13}/>
+  </HStack>
+}
+function MainButton({title,action,disabled}:{title:string,action:()=>void,disabled?:boolean}) {
+  return <Button action={action} disabled={disabled} buttonStyle="plain">
+    <HStack padding={{vertical:15,horizontal:18}} frame={{maxWidth:"infinity"}} background={PURPLE} clipShape={{type:"rect",cornerRadius:13}}>
+      <Spacer/><Text font="headline" fontWeight="bold" foregroundStyle="white">{title}</Text><Spacer/>
+    </HStack>
+  </Button>
+}
+const categories:[string,string][]=[["全部","tram.fill"],["高铁","train.side.front.car"],["城际","tram"],["动车","train.side.front.car"],["普速","train.side.front.car"]]
+function Filters({type,setType,compact=false}:{type:string,setType:(v:string)=>void,compact?:boolean}) {
+  return <HStack spacing={4} frame={{maxWidth:"infinity"}}>
+    {categories.map(([v,icon])=><Button key={v} action={()=>setType(v)} buttonStyle="plain">
+      <VStack spacing={compact?0:5} padding={{horizontal:compact?8:4,vertical:compact?8:10}} frame={{maxWidth:"infinity"}} background={type===v?"rgba(233,229,255,1)":"white"} clipShape={{type:"rect",cornerRadius:12}}>
+        {compact?null:<Symbol name={icon} color={type===v?PURPLE:INK} size={19}/>}
+        <Text font={compact?"caption":"subheadline"} fontWeight={type===v?"bold":"regular"} foregroundStyle={type===v?PURPLE:INK}>{v}</Text>
+      </VStack>
+    </Button>)}
+  </HStack>
+}
+function FeatureRow({icon,title,detail,action}:{icon:string,title:string,detail:string,action:()=>void}) {
+  return <Button action={action} buttonStyle="plain">
+    <HStack spacing={12} padding={{vertical:7}} frame={{maxWidth:"infinity"}}>
+      <VStack padding={11} background="rgba(237,234,255,1)" clipShape={{type:"rect",cornerRadius:10}}><Symbol name={icon} size={22}/></VStack>
+      <VStack alignment="leading" spacing={4}>
+        <Text font="headline" fontWeight="semibold" foregroundStyle={INK}>{title}</Text>
+        <Text font="caption" foregroundStyle={MUTED}>{detail}</Text>
+      </VStack>
+      <Spacer/><Symbol name="chevron.right" size={13}/>
+    </HStack>
+  </Button>
 }
 function matches(t:Train,type:string):boolean {
   return type==="全部" || (type==="高铁" && /^G/.test(t.code)) || (type==="城际" && /^C/.test(t.code)) || (type==="动车" && /^D/.test(t.code)) || (type==="普速" && !/^[GCD]/.test(t.code))
@@ -111,24 +158,18 @@ function App() {
   return <NavigationStack><VStack spacing={0} background={LIGHT}>
     {screen==="home" ? <>
       <Header title="12306 余票查询" subtitle="实时余票 · 经停信息 · 中转换乘"/>
-      <ScrollView><VStack spacing={12} padding={14}>
+      <ScrollView><VStack spacing={12} padding={{horizontal:14,top:0,bottom:16}}>
         <Panel>
-          <HStack spacing={6}>
-            <VStack spacing={4}><Field title="出发站" value={from} change={setFrom}/></VStack>
-            <Button title="⇄" action={()=>{const old=from;setFrom(to);setTo(old)}} tint={PURPLE}/>
-            <VStack spacing={4}><Field title="到达站" value={to} change={setTo}/></VStack>
-          </HStack>
+          <Stations from={from} to={to} setFrom={setFrom} setTo={setTo}/>
           <Divider/>
-          <DatePicker title="出发日期" value={new Date(date+"T12:00:00+08:00").getTime()} onChanged={v=>setDate(new Date(v+8*3600000).toISOString().slice(0,10))} startDate={new Date(todayChina()+"T00:00:00+08:00").getTime()} displayedComponents={["date"]} datePickerStyle="compact"/>
+          <DateRow date={date} setDate={setDate}/>
         </Panel>
         <Panel><Filters type={type} setType={setType}/></Panel>
         <MainButton title="查询余票" action={()=>void loadTickets()} disabled={busy}/>
         <Panel>
-          <Button title="▣  经停站查询                       ›" action={()=>{setError("");setScreen("stops")}} tint={DARK}/>
-          <Text font="caption" foregroundStyle={MUTED}>输入车次，查看途经站和时刻</Text>
+          <FeatureRow icon="tram.fill" title="经停站查询" detail="输入车次，查看途经站和时刻" action={()=>{setError("");setScreen("stops")}}/>
           <Divider/>
-          <Button title="⌘  中转换乘                           ›" action={()=>{setError("");setScreen("transfer")}} tint={DARK}/>
-          <Text font="caption" foregroundStyle={MUTED}>查询指定中转站的换乘方案</Text>
+          <FeatureRow icon="point.3.connected.trianglepath.dotted" title="中转换乘" detail="查询指定中转站的换乘方案" action={()=>{setError("");setScreen("transfer")}}/>
         </Panel>
       </VStack></ScrollView>
     </> : null}
@@ -140,7 +181,7 @@ function App() {
           <Spacer/><Text foregroundStyle={INK}>{dateLabel(date)}</Text><Spacer/>
           <Button title="后一天 ›" action={()=>{const d=shiftDate(date,1);setDate(d);void loadTickets(d)}} disabled={busy} tint={PURPLE}/>
         </HStack></Panel>
-        <Filters type={type} setType={setType}/>
+        <Filters type={type} setType={setType} compact/>
         {errorView}
         {busy?<Text foregroundStyle={MUTED}>正在查询实时余票…</Text>:null}
         {filtered.map(t=><TrainCard key={t.code} train={t} onPress={()=>void loadStops(t)}/>)}
@@ -171,9 +212,9 @@ function App() {
       <Header title="中转换乘" back={()=>setScreen("home")}/>
       <ScrollView><VStack spacing={12} padding={14}>
         <Panel>
-          <HStack spacing={6}><Field title="出发站" value={from} change={setFrom}/><Button title="⇄" action={()=>{const old=from;setFrom(to);setTo(old)}} tint={PURPLE}/><Field title="到达站" value={to} change={setTo}/></HStack>
+          <Stations from={from} to={to} setFrom={setFrom} setTo={setTo}/>
           <Field title="中转站" value={via} change={setVia}/>
-          <DatePicker title="出发日期" value={new Date(date+"T12:00:00+08:00").getTime()} onChanged={v=>setDate(new Date(v+8*3600000).toISOString().slice(0,10))} startDate={new Date(todayChina()+"T00:00:00+08:00").getTime()} displayedComponents={["date"]} datePickerStyle="compact"/>
+          <DateRow date={date} setDate={setDate}/>
         </Panel>
         <MainButton title={busy?"查询中…":"查询换乘方案"} action={()=>void loadTransfers()} disabled={busy}/>
         {errorView}
@@ -187,8 +228,13 @@ function App() {
         <Text font="caption" foregroundStyle={MUTED}>仅提供当日时刻估算，不保证实际换乘可行；跨日换乘暂不支持。</Text>
       </VStack></ScrollView>
     </> : null}
-  <HStack spacing={18} padding={{horizontal:24,vertical:12}} background="white">
-    <Spacer/><Button title="⌂  首页" action={()=>{setScreen("home");setError("")}} tint={PURPLE}/><Spacer/><Button title="⏻  退出" action={dismiss} tint={INK}/><Spacer/>
+  <HStack spacing={0} padding={{vertical:10,horizontal:18}} background="white" frame={{maxWidth:"infinity"}}>
+    <Button action={()=>{setScreen("home");setError("")}} buttonStyle="plain">
+      <VStack spacing={4} frame={{maxWidth:"infinity"}}><Symbol name="house.fill" size={22}/><Text font="caption" foregroundStyle={PURPLE}>首页</Text></VStack>
+    </Button>
+    <Button action={dismiss} buttonStyle="plain">
+      <VStack spacing={4} frame={{maxWidth:"infinity"}}><Symbol name="power" color={INK} size={22}/><Text font="caption" foregroundStyle={INK}>退出</Text></VStack>
+    </Button>
   </HStack>
   </VStack></NavigationStack>
 }
