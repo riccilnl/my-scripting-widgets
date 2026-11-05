@@ -34,7 +34,7 @@ jobs:
           import zipfile, json
           with zipfile.ZipFile('12306余票.scripting') as z:
               assert z.testzip() is None
-              assert json.loads(z.read('12306余票/script.json'))['version'] == '0.2.1'
+              assert json.loads(z.read('12306余票/script.json'))['version'] == '0.2.2'
               assert b'foregroundStyle="secondaryLabel"' in z.read('12306余票/index.tsx')
           PY
       - name: Publish verified installer
@@ -52,7 +52,7 @@ jobs:
             cp "${RUNNER_TEMP}/12306.scripting" '12306余票.scripting'
             git add -- '12306余票.scripting'
             if git diff --cached --quiet; then exit 0; fi
-            git commit -m 'build(12306): publish Scripting v0.2.1'
+            git commit -m 'build(12306): publish Scripting v0.2.2'
             if git push origin HEAD:main; then exit 0; fi
           done
           exit 1

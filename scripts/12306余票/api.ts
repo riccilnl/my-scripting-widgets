@@ -54,23 +54,21 @@ export function parseTickets(raw: unknown, stations: Record<string,string>): Tra
   }).filter((t: Train | null): t is Train => !!t)
 }
 function validateDate(date: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date+"T00:00:00+08:00"))) throw new Error("日期格式应为 YYYY-MM-DD")
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date+"T00:00:00+08:00")) || new Date(date+"T00:00:00+08:00").toISOString().slice(0,10) !== date) throw new Error("日期格式应为 YYYY-MM-DD")
   const today = new Date(Date.now() + 8*3600000).toISOString().slice(0,10)
   if (date < today) throw new Error("出发日期不能早于今天")
 }
 export async function searchTickets(date: string, from: string, to: string): Promise<Train[]> {
   validateDate(date)
-  const page = await get("https://www.12306.cn/index/")
-  const match = page.match(/\/script\/core\/common\/station_name[^"'\s<>]*\.js/)
   const urls = [
-    ...(match ? ["https://www.12306.cn/index" + match[0]] : []),
+    "https://www.12306.cn/index/script/core/common/station_name.js",
     BASE + "/otn/resources/js/framework/station_name.js"
   ]
   let stations: Record<string,string> = {}
   for (const url of urls) {
     try {
       const parsed = parseStations(await get(url))
-      if (Object.keys(parsed).length > 100) { stations = parsed; break }
+      if (Object.keys(parsed).length > 100 && parsed["广州南"] === "IZQ" && parsed["深圳北"] === "IOQ") { stations = parsed; break }
     } catch { /* Try the next official station list endpoint. */ }
   }
   if (!Object.keys(stations).length) throw new Error("12306 车站数据加载失败，请稍后重试")
