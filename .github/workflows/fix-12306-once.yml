@@ -44,8 +44,6 @@ jobs:
           p.write_text(s[:start]+'  '+replacement.replace('\n','\n  ')+'\n'+s[end:])
           m=Path('scripts/12306余票/script.json')
           m.write_text(m.read_text().replace('"0.1.1"','"0.1.2"'))
-          w=Path('.github/workflows/build-12306.yml')
-          w.write_text(w.read_text().replace("== '0.1.1'","== '0.1.2'").replace('v0.1.1','v0.1.2'))
           PY
           node scripts/update_links.js --project "12306余票"
           unzip -t '12306余票.scripting'
@@ -54,6 +52,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- 'scripts/12306余票/api.ts' 'scripts/12306余票/script.json' '.github/workflows/build-12306.yml' '12306余票.scripting'
+          git add -- 'scripts/12306余票/api.ts' 'scripts/12306余票/script.json' '12306余票.scripting'
           git commit -m 'fix(12306): station list loading v0.1.2'
           git push origin HEAD:main
