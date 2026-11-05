@@ -1,4 +1,4 @@
-import { Navigation, NavigationStack, TabView, Tab, ScrollView, VStack, HStack, Text, TextField, Button, Spacer, Divider, Script, useState } from "scripting"
+import { Navigation, NavigationStack, DatePicker, ScrollView, VStack, HStack, Text, TextField, Button, Spacer, Divider, Script, useState } from "scripting"
 import { searchTickets, trainStops, combineTransfers, Train, Stop, Connection } from "./api"
 
 const PURPLE = "rgba(78,54,218,1)"
@@ -59,14 +59,15 @@ function TrainCard({train,onPress}:{train:Train,onPress:()=>void}) {
       <Button title="›" action={onPress} tint={PURPLE}/>
     </HStack>
     <Divider/>
-    <HStack><Spacer/>{seats.map(s=><Seat key={s.name} name={s.name.replace("座","等")} count={s.count}/>)}<Spacer/></HStack>
+    <HStack><Spacer/>{seats.map(s=><Seat key={s.name} name={s.name} count={s.count}/>)}<Spacer/></HStack>
   </VStack>
 }
 function App() {
+  const dismiss=Navigation.useDismiss()
   const [screen,setScreen]=useState<Screen>("home")
   const [from,setFrom]=useState("广州南")
   const [to,setTo]=useState("深圳北")
-  const [via,setVia]=useState("深圳北")
+  const [via,setVia]=useState("广州东")
   const [date,setDate]=useState(todayChina())
   const [type,setType]=useState("全部")
   const [trains,setTrains]=useState<Train[]>([])
@@ -89,8 +90,8 @@ function App() {
   async function loadStops(train?:Train) {
     if(busy)return
     const t=train||trains.find(t=>t.code.trim().toUpperCase()===trainCode.trim().toUpperCase())
-    setScreen("stops");setError("");setStops([])
-    if(!t){setError("请先查询对应日期的车次，再选择该车次查看经停站");return}
+    setScreen("stops");setError("");setStops([]);setSelected(null);setStopsQueried(false)
+    if(!t){setError("当前接口需要车次内部编号。请先查询出发地和到达地的余票，再点击相应车次查看经停站。");return}
     setSelected(t);setTrainCode(t.code);setBusy(true);setStopsQueried(false)
     try {setStops(await trainStops(t,date));setStopsQueried(true)}
     catch(e){setError(e instanceof Error?e.message:String(e))}
@@ -118,7 +119,7 @@ function App() {
             <VStack spacing={4}><Field title="到达站" value={to} change={setTo}/></VStack>
           </HStack>
           <Divider/>
-          <HStack><Text foregroundStyle={MUTED}>▣ 出发日期</Text><Spacer/><TextField title="YYYY-MM-DD" value={date} onChanged={setDate}/></HStack>
+          <DatePicker title="出发日期" value={new Date(date+"T12:00:00+08:00").getTime()} onChanged={v=>setDate(new Date(v+8*3600000).toISOString().slice(0,10))} startDate={new Date(todayChina()+"T00:00:00+08:00").getTime()} displayedComponents={["date"]} datePickerStyle="compact"/>
         </Panel>
         <Panel><Filters type={type} setType={setType}/></Panel>
         <MainButton title="查询余票" action={()=>void loadTickets()} disabled={busy}/>
@@ -135,7 +136,7 @@ function App() {
       <Header title="列车余票" subtitle={from+" → "+to+" · "+date} back={()=>setScreen("home")}/>
       <ScrollView><VStack spacing={12} padding={12}>
         <Panel><HStack>
-          <Button title="‹ 前一天" action={()=>{const d=shiftDate(date,-1);setDate(d);void loadTickets(d)}} disabled={busy} tint={PURPLE}/>
+          <Button title="‹ 前一天" action={()=>{const d=shiftDate(date,-1);if(d>=todayChina()){setDate(d);void loadTickets(d)}}} disabled={busy} tint={PURPLE}/>
           <Spacer/><Text foregroundStyle={INK}>{dateLabel(date)}</Text><Spacer/>
           <Button title="后一天 ›" action={()=>{const d=shiftDate(date,1);setDate(d);void loadTickets(d)}} disabled={busy} tint={PURPLE}/>
         </HStack></Panel>
@@ -149,7 +150,7 @@ function App() {
     {screen==="stops" ? <>
       <Header title="经停站查询" back={()=>setScreen("home")}/>
       <ScrollView><VStack spacing={14} padding={14}>
-        <Panel><HStack><Text foregroundStyle={MUTED}>▣ 车次</Text><Spacer/><TextField title="如 G6523" value={trainCode} onChanged={setTrainCode}/></HStack></Panel>
+        <Panel><HStack><Text foregroundStyle={MUTED}>▣ 车次</Text><Spacer/><TextField title="如 G6523" value={trainCode} onChanged={setTrainCode}/></HStack><Text font="caption" foregroundStyle={MUTED}>当前需先查询对应线路，再选择车次查看经停站。</Text></Panel>
         <MainButton title={busy?"查询中…":"查询经停站"} disabled={busy} action={()=>void loadStops()}/>
         {errorView}
         {selected&&stops.length?<Panel>
@@ -172,7 +173,7 @@ function App() {
         <Panel>
           <HStack spacing={6}><Field title="出发站" value={from} change={setFrom}/><Button title="⇄" action={()=>{const old=from;setFrom(to);setTo(old)}} tint={PURPLE}/><Field title="到达站" value={to} change={setTo}/></HStack>
           <Field title="中转站" value={via} change={setVia}/>
-          <HStack><Text foregroundStyle={MUTED}>▣ 出发日期</Text><Spacer/><TextField title="YYYY-MM-DD" value={date} onChanged={setDate}/></HStack>
+          <DatePicker title="出发日期" value={new Date(date+"T12:00:00+08:00").getTime()} onChanged={v=>setDate(new Date(v+8*3600000).toISOString().slice(0,10))} startDate={new Date(todayChina()+"T00:00:00+08:00").getTime()} displayedComponents={["date"]} datePickerStyle="compact"/>
         </Panel>
         <MainButton title={busy?"查询中…":"查询换乘方案"} action={()=>void loadTransfers()} disabled={busy}/>
         {errorView}
@@ -186,15 +187,11 @@ function App() {
         <Text font="caption" foregroundStyle={MUTED}>仅提供当日时刻估算，不保证实际换乘可行；跨日换乘暂不支持。</Text>
       </VStack></ScrollView>
     </> : null}
+  <HStack spacing={18} padding={{horizontal:24,vertical:12}} background="white">
+    <Spacer/><Button title="⌂  首页" action={()=>{setScreen("home");setError("")}} tint={PURPLE}/><Spacer/><Button title="⏻  退出" action={dismiss} tint={INK}/><Spacer/>
+  </HStack>
   </VStack></NavigationStack>
 }
-function Root() {
-  const dismiss=Navigation.useDismiss()
-  const [tab,setTab]=useState(0)
-  return <TabView tabIndex={tab} onTabIndexChanged={next=>{if(next===1){dismiss();return}setTab(next)}}>
-    <Tab title="首页" systemImage="house.fill" value={0}><App/></Tab>
-    <Tab title="退出" systemImage="power" value={1}><Text>正在退出…</Text></Tab>
-  </TabView>
-}
+function Root(){return <App/>}
 async function main(){try{await Navigation.present({element:<Root/>,modalPresentationStyle:"fullScreen"})}finally{Script.exit()}}
 main().catch(e=>console.error("12306: "+String(e)))

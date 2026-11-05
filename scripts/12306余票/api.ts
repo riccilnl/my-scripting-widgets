@@ -54,7 +54,7 @@ export function parseTickets(raw: unknown, stations: Record<string,string>): Tra
   }).filter((t: Train | null): t is Train => !!t)
 }
 function validateDate(date: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date+"T00:00:00+08:00"))) throw new Error("日期格式应为 YYYY-MM-DD")
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date+"T00:00:00+08:00")) || new Date(date+"T12:00:00+08:00").toISOString().slice(0,10) !== date) throw new Error("日期格式应为 YYYY-MM-DD")
   const today = new Date(Date.now() + 8*3600000).toISOString().slice(0,10)
   if (date < today) throw new Error("出发日期不能早于今天")
 }
