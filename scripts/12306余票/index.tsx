@@ -20,7 +20,7 @@ function Root() {
   const visible = trains.filter(t => type === "全部" || (type === "高铁/城际" ? /^[GC]/.test(t.code) : type === "动车" ? /^D/.test(t.code) : !/^[GCD]/.test(t.code)))
   return <NavigationStack><ScrollView><VStack spacing={12} padding={16}>
     <Text font="title2">12306 余票查询</Text>
-    <Text font="caption" foregroundStyle="secondary">请输入具体车站名称；数据以 12306 实际响应为准</Text>
+    <Text font="caption" foregroundStyle="secondaryLabel">请输入具体车站名称；数据以 12306 实际响应为准</Text>
     <HStack spacing={8}>
       <VStack><Text>出发站</Text><TextField title="出发站" value={from} onChanged={setFrom} /></VStack>
       <VStack><Text>到达站</Text><TextField title="到达站" value={to} onChanged={setTo} /></VStack>

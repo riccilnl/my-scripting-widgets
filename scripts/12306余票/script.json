@@ -1,6 +1,6 @@
 {
   "name": "12306余票",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "12306 直达车次与余票查询",
   "icon": "tram.fill",
   "color": "rgba(28,112,190,1)",

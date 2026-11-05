@@ -1,0 +1,58 @@
+name: Build 12306 Scripting
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/12306余票/**'
+      - '.github/workflows/build-12306.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: scripting-12306-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate packager
+        run: node --test scripts/update_links.test.js
+      - name: Validate TypeScript/TSX syntax
+        run: npx --yes esbuild@0.28.2 "scripts/12306余票/index.tsx" --bundle --platform=neutral --external:scripting --jsx=transform --jsx-factory=createElement --jsx-fragment=Fragment --outfile=/tmp/12306-check.js
+      - name: Build installer
+        run: node scripts/update_links.js --project "12306余票"
+      - name: Verify archive
+        run: |
+          python3 - <<'PY'
+          import zipfile, json
+          with zipfile.ZipFile('12306余票.scripting') as z:
+              assert z.testzip() is None
+              assert json.loads(z.read('12306余票/script.json'))['version'] == '0.1.1'
+              assert b'foregroundStyle="secondaryLabel"' in z.read('12306余票/index.tsx')
+          PY
+      - name: Publish verified installer
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          cp '12306余票.scripting' "${RUNNER_TEMP}/12306.scripting"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git diff --quiet "${GITHUB_SHA}" origin/main -- 'scripts/12306余票' '.github/workflows/build-12306.yml'; then
+              echo 'Newer source exists; skipping stale build'
+              exit 0
+            fi
+            git reset --hard origin/main
+            cp "${RUNNER_TEMP}/12306.scripting" '12306余票.scripting'
+            git add -- '12306余票.scripting'
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'build(12306): publish Scripting v0.1.1'
+            if git push origin HEAD:main; then exit 0; fi
+          done
+          exit 1
