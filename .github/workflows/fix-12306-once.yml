@@ -1,0 +1,59 @@
+name: Publish 12306 station fix
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-12306-once.yml']
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply and verify fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+          p=Path('scripts/12306余票/api.ts')
+          s=p.read_text()
+          start=s.index('  const page = await get(')
+          end=s.index('  if (!a || !b)',start)
+          replacement=dedent(r'''
+            const page = await get("https://www.12306.cn/index/")
+            const match = page.match(/\/script\/core\/common\/station_name[^"'\s<>]*\.js/)
+            const urls = [
+              ...(match ? ["https://www.12306.cn/index" + match[0]] : []),
+              BASE + "/otn/resources/js/framework/station_name.js"
+            ]
+            let stations: Record<string,string> = {}
+            for (const url of urls) {
+              try {
+                const parsed = parseStations(await get(url))
+                if (Object.keys(parsed).length > 100) { stations = parsed; break }
+              } catch { /* Try next official station list endpoint. */ }
+            }
+            if (!Object.keys(stations).length) throw new Error("12306 车站数据加载失败，请稍后重试")
+            const a = stations[from.trim()], b = stations[to.trim()]
+          ''').strip()
+          p.write_text(s[:start]+'  '+replacement.replace('\n','\n  ')+'\n'+s[end:])
+          m=Path('scripts/12306余票/script.json')
+          m.write_text(m.read_text().replace('"0.1.1"','"0.1.2"'))
+          w=Path('.github/workflows/build-12306.yml')
+          w.write_text(w.read_text().replace("== '0.1.1'","== '0.1.2'").replace('v0.1.1','v0.1.2'))
+          PY
+          node scripts/update_links.js --project "12306余票"
+          unzip -t '12306余票.scripting'
+          git diff --check
+      - name: Publish
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'scripts/12306余票/api.ts' 'scripts/12306余票/script.json' '.github/workflows/build-12306.yml' '12306余票.scripting'
+          git commit -m 'fix(12306): station list loading v0.1.2'
+          git push origin HEAD:main
