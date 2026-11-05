@@ -1,12 +1,13 @@
 {
   "name": "12306余票",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "12306 直达车次与余票查询",
   "icon": "tram.fill",
   "color": "rgba(28,112,190,1)",
   "runInApp": true,
   "entry": "index.tsx",
   "remoteResource": {
+    "autoUpdateInterval": 3600,
     "url": "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/main/12306%E4%BD%99%E7%A5%A8.scripting"
   }
 }
