@@ -36,40 +36,59 @@ function Home() {
     finally { setBusy(false) }
   }
   const visible = trains.filter(t => type === "全部" || (type === "高铁/城际" ? /^[GC]/.test(t.code) : type === "动车" ? /^D/.test(t.code) : !/^[GCD]/.test(t.code)))
-  return <NavigationStack><ScrollView><VStack spacing={12} padding={16}>
-    <Text font="title2">12306 余票查询</Text>
-    <Text font="caption" foregroundStyle="secondaryLabel">直达查询、指定中转站换乘及经停站；以 12306 实际数据为准</Text>
-    <HStack spacing={8}>
-      <VStack><Text>出发站</Text><TextField title="出发站" value={from} onChanged={setFrom}/></VStack>
-      <VStack><Text>到达站</Text><TextField title="到达站" value={to} onChanged={setTo}/></VStack>
-    </HStack>
-    <Text>出发日期（YYYY-MM-DD）</Text>
-    <TextField title="日期" value={date} onChanged={setDate}/>
-    <Button title={busy ? "查询中…" : "查询直达余票"} disabled={busy} action={() => void query(false)} buttonStyle="borderedProminent"/>
-    <Text>中转站（可选，指定中转）</Text>
-    <TextField title="中转站" value={via} onChanged={setVia}/>
-    <Button title="查询中转方案" disabled={busy} action={() => void query(true)} />
-    {error ? <Text foregroundStyle="red">{error}</Text> : null}
-    <HStack spacing={8}>
-      {["全部","高铁/城际","动车","普速"].map(v => <Button key={v} title={(type===v ? "✓ " : "")+v} action={() => setType(v)}/>)}
-    </HStack>
-    <Text font="caption">{busy ? "正在请求 12306…" : "直达 "+visible.length+" 趟 · 中转 "+connections.length+" 组"}</Text>
-    {visible.map(t => <VStack key={t.code} alignment="leading" spacing={5}>
-      <HStack><Text font="headline">{t.code}</Text><Spacer/><Text>{t.duration}</Text></HStack>
-      <Text>{t.from+" "+t.depart+" → "+t.to+" "+t.arrive}</Text>
-      <Text font="caption">{t.seats.map(s => s.name+" "+s.count).join(" · ")}</Text>
-      <Button title={selectedTrain===t.code ? "收起经停站" : "查看经停站"} disabled={busy} action={() => void showStops(t)}/>
-      {selectedTrain===t.code ? stops.map((s,i) => <Text key={i} font="caption">{s.station+" 到 "+s.arrive+" 发 "+s.depart+" 停 "+s.stay}</Text>) : null}
-      <Divider/>
-    </VStack>)}
-    {connections.map((c,i) => <VStack key={i} alignment="leading" spacing={5}>
-      <Text font="headline">{c.first.code+" → "+c.second.code}</Text>
-      <Text>{c.first.from+" "+c.first.depart+" → "+c.first.to+" "+c.first.arrive}</Text>
-      <Text>{c.second.from+" "+c.second.depart+" → "+c.second.to+" "+c.second.arrive}</Text>
-      <Text font="caption">{"换乘约 "+c.waitMinutes+" 分钟（按当日时刻估算）"}</Text>
-      <Divider/>
-    </VStack>)}
-    <Text font="caption" foregroundStyle="secondaryLabel">票价、折扣及后台定时提醒暂未接入；跨日中转尚未支持。仅展示可验证的余票数据。</Text>
+  return <NavigationStack><ScrollView><VStack spacing={16} padding={16} background="rgba(246,248,250,1)">
+    <VStack spacing={12} padding={20} background="rgba(24,11,113,1)" clipShape={{type:"rect",cornerRadius:22}}>
+      <Text font="caption" foregroundStyle="rgba(199,195,245,1)">CHINA RAILWAY · 12306</Text>
+      <Text font="title2" fontWeight="bold" foregroundStyle="white">车次与余票</Text>
+      <Text font="caption" foregroundStyle="rgba(225,223,255,1)">查时刻 · 看余票 · 找换乘</Text>
+      <VStack spacing={10} padding={14} background="rgba(47,33,136,1)" clipShape={{type:"rect",cornerRadius:14}}>
+        <HStack spacing={12}>
+          <VStack alignment="leading" spacing={4}>
+            <Text font="caption" foregroundStyle="rgba(199,195,245,1)">出发 FROM</Text>
+            <TextField title="出发站" value={from} onChanged={setFrom}/>
+          </VStack>
+          <Button title="⇄" action={() => { const old=from; setFrom(to); setTo(old) }}/>
+          <VStack alignment="leading" spacing={4}>
+            <Text font="caption" foregroundStyle="rgba(199,195,245,1)">到达 TO</Text>
+            <TextField title="到达站" value={to} onChanged={setTo}/>
+          </VStack>
+        </HStack>
+      </VStack>
+      <Text font="caption" foregroundStyle="rgba(225,223,255,1)">出发日期 · YYYY-MM-DD</Text>
+      <TextField title="日期" value={date} onChanged={setDate}/>
+      <Button title={busy ? "查询中…" : "查询直达车次 →"} disabled={busy} action={() => void query(false)} buttonStyle="borderedProminent" tint="rgba(0,187,168,1)"/>
+    </VStack>
+    <VStack alignment="leading" spacing={10} padding={16} background="white" clipShape={{type:"rect",cornerRadius:18}}>
+      <Text font="headline" fontWeight="semibold">指定中转</Text>
+      <Text font="caption" foregroundStyle="secondaryLabel">选择途经车站，组合可衔接的车次</Text>
+      <TextField title="中转站" value={via} onChanged={setVia}/>
+      <Button title="查询中转方案 →" disabled={busy} action={() => void query(true)} />
+    </VStack>
+    {error ? <VStack padding={14} background="rgba(255,237,237,1)" clipShape={{type:"rect",cornerRadius:12}}><Text foregroundStyle="red">{error}</Text></VStack> : null}
+    <VStack alignment="leading" spacing={12} padding={16} background="white" clipShape={{type:"rect",cornerRadius:18}}>
+      <HStack><Text font="headline" fontWeight="bold">查询结果</Text><Spacer/><Text font="caption" foregroundStyle="secondaryLabel">{busy ? "正在查询…" : "直达 "+visible.length+" 趟 · 中转 "+connections.length+" 组"}</Text></HStack>
+      <HStack spacing={4}>
+        {["全部","高铁/城际","动车","普速"].map(v => <Button key={v} title={(type===v ? "✓ " : "")+v} action={() => setType(v)} buttonStyle={type===v ? "borderedProminent" : "bordered"}/>)}
+      </HStack>
+      {visible.map(t => <VStack key={t.code} alignment="leading" spacing={10} padding={12} background="rgba(247,249,252,1)" clipShape={{type:"rect",cornerRadius:12}}>
+        <HStack><Text font="headline" fontWeight="bold">{t.code}</Text><Spacer/><Text font="caption" foregroundStyle="secondaryLabel">{t.duration}</Text></HStack>
+        <HStack spacing={8}><Text font="title3" fontWeight="bold">{t.depart}</Text><Text foregroundStyle="secondaryLabel">→</Text><Text font="title3" fontWeight="bold">{t.arrive}</Text></HStack>
+        <Text font="caption" foregroundStyle="secondaryLabel">{t.from+" → "+t.to}</Text>
+        <Divider/>
+        <Text font="caption">{t.seats.map(s => s.name+" "+s.count).join(" · ")}</Text>
+        <Button title={selectedTrain===t.code ? "收起经停站 ↑" : "查看经停站 ›"} disabled={busy} action={() => void showStops(t)}/>
+        {selectedTrain===t.code ? stops.map((s,i) => <Text key={i} font="caption">{s.station+"  到 "+s.arrive+"  发 "+s.depart+"  停 "+s.stay}</Text>) : null}
+      </VStack>)}
+      {connections.map((c,i) => <VStack key={i} alignment="leading" spacing={8} padding={12} background="rgba(247,249,252,1)" clipShape={{type:"rect",cornerRadius:12}}>
+        <Text font="headline" fontWeight="bold">{c.first.code+" → "+c.second.code}</Text>
+        <Text>{c.first.from+"  "+c.first.depart+" → "+c.first.to+"  "+c.first.arrive}</Text>
+        <Divider/>
+        <Text>{c.second.from+"  "+c.second.depart+" → "+c.second.to+"  "+c.second.arrive}</Text>
+        <Text font="caption" foregroundStyle="secondaryLabel">{"换乘约 "+c.waitMinutes+" 分钟 · 当日时刻估算"}</Text>
+      </VStack>)}
+      {!busy && !error && !visible.length && !connections.length ? <Text font="caption" foregroundStyle="secondaryLabel">选择出发站、目的地与日期，开始查询</Text> : null}
+    </VStack>
+    <Text font="caption" foregroundStyle="secondaryLabel">票价与实时站台暂未接入；跨日中转暂不支持。数据以 12306 为准。</Text>
   </VStack></ScrollView></NavigationStack>
 }
 function Root() {
