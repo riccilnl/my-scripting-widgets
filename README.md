@@ -69,6 +69,7 @@ node scripts/update_links.js
 
 点击下方链接直接下载安装：
 
+- [12306余票](https://github.com/riccilnl/my-scripting-widgets/raw/main/12306%E4%BD%99%E7%A5%A8.scripting)
 - [IP检测](https://github.com/riccilnl/my-scripting-widgets/raw/main/IP%E6%A3%80%E6%B5%8B.scripting)
 - [Navidrome播放器](https://github.com/riccilnl/my-scripting-widgets/raw/main/Navidrome%E6%92%AD%E6%94%BE%E5%99%A8.scripting)
 - [ScriptingPlus](https://github.com/riccilnl/my-scripting-widgets/raw/main/ScriptingPlus.scripting)
