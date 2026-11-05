@@ -62,8 +62,18 @@ export async function searchTickets(date: string, from: string, to: string): Pro
   validateDate(date)
   const page = await get("https://www.12306.cn/index/")
   const match = page.match(/\/script\/core\/common\/station_name[^"'\s<>]*\.js/)
-  if (!match) throw new Error("无法发现 12306 车站列表")
-  const stations = parseStations(await get("https://www.12306.cn"+match[0]))
+  const urls = [
+    ...(match ? ["https://www.12306.cn/index" + match[0]] : []),
+    BASE + "/otn/resources/js/framework/station_name.js"
+  ]
+  let stations: Record<string,string> = {}
+  for (const url of urls) {
+    try {
+      const parsed = parseStations(await get(url))
+      if (Object.keys(parsed).length > 100) { stations = parsed; break }
+    } catch { /* Try next official station list endpoint. */ }
+  }
+  if (!Object.keys(stations).length) throw new Error("12306 车站数据加载失败，请稍后重试")
   const a = stations[from.trim()], b = stations[to.trim()]
   if (!a || !b) throw new Error("车站名称未匹配，请输入准确站名（如广州南、深圳北）")
   if (a === b) throw new Error("出发站与到达站不能相同")
