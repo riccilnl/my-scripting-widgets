@@ -35,7 +35,8 @@ jobs:
           with zipfile.ZipFile('12306余票.scripting') as z:
               assert z.testzip() is None
               assert json.loads(z.read('12306余票/script.json'))['version'] == '0.3.0'
-              assert b'foregroundStyle="secondaryLabel"' in z.read('12306余票/index.tsx')
+              assert b'title="12306 余票查询"' in z.read('12306余票/index.tsx')
+              assert b'title="中转换乘"' in z.read('12306余票/index.tsx')
           PY
       - name: Publish verified installer
         run: |
