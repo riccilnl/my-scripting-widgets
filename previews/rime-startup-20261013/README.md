@@ -17,9 +17,20 @@ increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
+0.3.63 is the same existing OTA diagnostics preview. The user
+reported that 0.3.62 fixed blurred candidates but delayed haptic
+bursts persisted. iOS 27.2 diagnostic mode now sends ZERO
+script-originated Haptics calls, even if the previous saved setting
+was enabled. The feedback toggle is visibly disabled in this
+preview; the stored preference is NOT changed. This isolates
+native haptics as a potential source, not an accepted fix.
+Keyboard input, gesture animations, candidate scrolling, and
+approved 0.3.62 blur fix are unchanged. Verification is pending.
+
 0.3.62 also replaces the pooled Core Haptics engine with a
-single non-queued native transient, suppressing backlogged vibration
-replays, and bounds stalled clipboard calls to 1200ms so the
+single non-queued native transient (which did NOT resolve delayed
+vibrations on the user's iOS 27.2 device), and bounds stalled
+clipboard calls to 1200ms so the
 normal key-action FIFO resumes without a late paste.
 These are preventive source fixes; iOS 27.2 device acceptance
 remains pending.

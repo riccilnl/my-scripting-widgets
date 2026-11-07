@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the OTA diagnostics 0.3.62 archive and pinned compatibility URLs.
+"""Check the OTA diagnostics 0.3.63 archive and pinned compatibility URLs.
 
 This is deliberately separate from the one-off independent experiment,
 because the user's existing iPhone project follows the diagnostics OTA channel.
@@ -20,13 +20,14 @@ from create_startup_diagnostic_preview import (
     REMOTE_ARCHIVE_NAME, REMOTE_ARCHIVE_URL
 )
 
-VERSION = "0.3.62"
+VERSION = "0.3.63"
 FROZEN_PREVIOUS_ARCHIVES = {
     "0.3.57": "5fea010126cc97eda89cb1ba376d83b93dad636d29be33fe4554e7246e5ce97f",
     "0.3.58": "5725c42b3e9ae1157772ac6a527a072908eda7f7e808456d731093d26deb065c",
     "0.3.59": "2f7cd5ac509c1810efb07c7a249d332d7b659f4ebc0b26e8fea18d76ee671ec0",
     "0.3.60": "df396887fe6f6f7fd10723c54ff342300b347d9a825c179114a920105a258c3f",
     "0.3.61": "efc686cdc306773af767b966968284b133db85102f55ea6fc2cf56b1d16d5c8f",
+    "0.3.62": "83f8e48e5b7c7078bb34fe6cd7ac3d4ea0099edda3048499d008e55ec79dcd32",
 }
 
 
@@ -104,7 +105,7 @@ def verify() -> None:
         assert hashlib.sha256(old_path.read_bytes()).hexdigest() == expected_sha
         assert expected_sha != info["sha256"]
         print("STARTUP_TRACE_FROZEN_PASS", version, expected_sha)
-    print("STARTUP_TRACE_0362_SOURCE_PASS", len(source), info["sha256"])
+    print("STARTUP_TRACE_0363_SOURCE_PASS", len(source), info["sha256"])
 
 
 if __name__ == "__main__":

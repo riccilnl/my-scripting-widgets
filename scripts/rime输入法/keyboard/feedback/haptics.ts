@@ -1,49 +1,18 @@
 /**
- * A keyboard key tap must not queue Core Haptics players or wait for engine
- * startup. Some iOS keyboard extensions defer native playback and then replay
- * a burst of previously scheduled start(0) calls.
+ * iOS 27.2 diagnostic preview:
+ * Suppress ALL script-originated haptics in the keyboard extension.
  *
- * Use only one native transient at a time. Additional taps while the native
- * callback is pending are deliberately silent rather than accumulated.
+ * Haptics.transient() uses an asynchronous native Core Haptics engine.
+ * Even a resolved JS Promise does not establish that the physical event
+ * has already played; no JS-side throttling can cancel native backlog.
+ *
+ * Do not edit the persisted feedback preference; it can be used again
+ * when a verified immediate-feedback backend is available.
  */
-const MIN_HAPTIC_INTERVAL_MS = 45;
-
-let pending = false;
-let lastTriggeredAt = 0;
-let generation = 0;
-
-export function prepareKeyboardHaptics(_enabled: boolean) {
-  // No retained CHHapticEngine, player pool, or reset/startAsync callbacks.
+export function playKeyboardHaptic(_enabled: boolean): void {
+  // Deliberately no native Haptics, HapticEngine, or audio call.
 }
 
-export function disposeKeyboardHaptics() {
-  generation += 1;
-  pending = false;
-  lastTriggeredAt = 0;
-}
-
-export function playKeyboardHaptic(enabled: boolean) {
-  if (!enabled || pending) return;
-  const now = Date.now();
-  if (lastTriggeredAt && now - lastTriggeredAt < MIN_HAPTIC_INTERVAL_MS) return;
-
-  const haptics = (globalThis as any).Haptics;
-  if (!haptics || typeof haptics.transient !== "function" ||
-      haptics.supportsHaptics === false) return;
-
-  const token = generation;
-  lastTriggeredAt = now;
-  try {
-    const result = haptics.transient(0.56, 0.56);
-    if (result && typeof result.then === "function") {
-      pending = true;
-      // Never enqueue retries or late playback after a delayed native result.
-      void Promise.resolve(result).then(
-        () => { if (generation === token) pending = false; },
-        () => { if (generation === token) pending = false; }
-      );
-    }
-  } catch {
-    // Native haptic failure must not stop the keyboard input path.
-  }
+export function disposeKeyboardHaptics(): void {
+  // No native haptic resources are allocated in this preview.
 }

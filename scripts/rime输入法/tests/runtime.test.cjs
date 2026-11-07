@@ -90,36 +90,24 @@ test("queue maintains FIFO for reentrant calls and ignores abandoned promises", 
   assert.deepEqual(a, [1, 2, 3, 5]);
 });
 
-test("haptics never queue a delayed replay of prior key taps", async () => {
-  let clock = 1000;
-  let releaseNative;
-  const calls = [];
-  const { playKeyboardHaptic: play, disposeKeyboardHaptics: dispose } =
-    load("keyboard/feedback/haptics.ts", ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
-      Date: { now: () => clock },
+test("iOS 27.2 diagnostic preview never submits native haptics for any key", () => {
+  const counts = { transient: 0, continuous: 0, engines: 0, feedback: 0 };
+  const h = load("keyboard/feedback/haptics.ts",
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
       Haptics: {
         supportsHaptics: true,
-        transient: (intensity, sharpness) => {
-          calls.push([intensity, sharpness]);
-          return new Promise((resolve) => { releaseNative = resolve; });
-        }
-      }
+        transient() { counts.transient++; },
+        continuous() { counts.continuous++; }
+      },
+      HapticEngine: class {
+        constructor() { counts.engines++; }
+      },
+      HapticFeedback: { impact() { counts.feedback++; } }
     });
-  play(true);
-  for (let i = 0; i < 30; i++) { clock += 100; play(true); }
-  assert.equal(calls.length, 1, "native haptics pending means new taps are silent");
-  releaseNative();
-  await Promise.resolve();
-  await Promise.resolve();
-  clock += 100;
-  play(true);
-  assert.equal(calls.length, 2, "new live key tap can play after native completion");
-  dispose();
-  releaseNative();
-  await Promise.resolve();
-  await Promise.resolve();
-  play(false);
-  assert.equal(calls.length, 2);
+  for (let i = 0; i < 500; i++) h.playKeyboardHaptic(true);
+  for (let i = 0; i < 50; i++) h.playKeyboardHaptic(false);
+  h.disposeKeyboardHaptics();
+  assert.deepEqual(counts, { transient: 0, continuous: 0, engines: 0, feedback: 0 });
 });
 
 test("bounded clipboard wait unblocks queued typing and drops late paste", async () => {
@@ -872,82 +860,24 @@ test("expanded grid reuses column and padded candidate arrays without changing h
   assert.match(source, /contentShape="rect"/);
 });
 
-test("haptic preparation never constructs Core Haptics engine or player pool", () => {
-  const stats = { nativeEngineCreated: 0, transient: 0 };
-  class Engine {
-    constructor() { stats.nativeEngineCreated++; }
-  }
-  const h = load("keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"], {
-      HapticEngine: Engine, Date: { now: () => 1000 },
-      Haptics: { supportsHaptics: true, transient() { stats.transient++; } }
-    });
-  h.prepareKeyboardHaptics(true);
-  h.playKeyboardHaptic(true);
-  h.disposeKeyboardHaptics();
-  assert.equal(stats.nativeEngineCreated, 0);
-  assert.equal(stats.transient, 1);
+test("haptic diagnostic mode leaves saved user preference unchanged and shows disabled toggle", () => {
+  const settings = fs.readFileSync(path.join(root, "ui/settings/KeyboardSettingsPage.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard/feedback/haptics.ts"), "utf8");
+  assert.match(settings, /title="按键震动反馈（诊断版暂停）"/);
+  assert.match(settings, /value=\{false\}[\s\S]*?disabled=\{true\}/);
+  assert.doesNotMatch(settings, /changeHapticsEnabled/);
+  assert.match(source, /function playKeyboardHaptic\(_enabled: boolean\)/);
+  assert.doesNotMatch(source, /\bglobalThis\b|\bstartAsync\b|\bmakePlayer\b/);
 });
 
-test("rapid taps use a short haptic interval without replaying all taps", () => {
-  let now = 1000;
-  const stats = { transients: 0 };
-  const h = load("keyboard/feedback/haptics.ts",
-    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
-      Date: { now: () => now },
-      Haptics: { supportsHaptics: true, transient() { stats.transients++; } }
-    });
-  for (let i = 0; i < 20; i++) { h.playKeyboardHaptic(true); now += 5; }
-  assert.equal(stats.transients, 3, "20 taps over 100ms should trigger only 3 spaced haptics");
-  h.playKeyboardHaptic(false);
-  assert.equal(stats.transients, 3);
-  h.disposeKeyboardHaptics();
+test("keyboard gestures continue to use the common haptic wrapper", () => {
+  const keyboard = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
+  assert.match(keyboard, /onTouchStart=\{\(\) => playKeyboardHaptic\(hapticsEnabled\)\}/);
+  assert.match(keyboard, /dispatchKeyboardAction\(\(\) => dispatch\(command\)\)/);
+  assert.doesNotMatch(keyboard, /\bHaptics\.transient\(|new HapticEngine\(/);
 });
 
-test("haptic teardown invalidates pending native completion", async () => {
-  let releaseFirst;
-  const stats = { transients: 0 };
-  let now = 1000;
-  const h = load("keyboard/feedback/haptics.ts",
-    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
-      Date: { now: () => now },
-      Haptics: { supportsHaptics: true, transient() {
-        stats.transients++;
-        return stats.transients === 1
-          ? new Promise(resolve => { releaseFirst = resolve; })
-          : Promise.resolve();
-      } }
-    });
-  h.playKeyboardHaptic(true);
-  assert.equal(stats.transients, 1);
-  h.disposeKeyboardHaptics();
-  now += 80;
-  h.playKeyboardHaptic(true);
-  assert.equal(stats.transients, 2);
-  releaseFirst();
-  await Promise.resolve();
-  await Promise.resolve();
-  h.playKeyboardHaptic(false);
-  assert.equal(stats.transients, 2);
-});
-
-test("async failure of fallback transient feedback is consumed without unhandled rejection", async () => {
-  const stats = { attempts: 0 };
-  const { playKeyboardHaptic, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["playKeyboardHaptic", "disposeKeyboardHaptics"],
-    { Haptics: { supportsHaptics: true,
-      transient() { stats.attempts++; return Promise.reject(new Error("transient unavailable")); }
-    } }
-  );
-  playKeyboardHaptic(true);
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(stats.attempts, 1);
-  disposeKeyboardHaptics();
-});
-
-test("keyboard dismiss releases Core Haptics even when extension view stays mounted", () => {
+test("keyboard dismiss retains a harmless no-op haptic cleanup hook", () => {
   const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const start = source.indexOf("  function dismissKeyboard() {");
   const end = source.indexOf("\n  function renderKey(", start);
@@ -1042,27 +972,17 @@ test("normal Rime initialization still returns open session with identical schem
   assert.equal(f.stats.closed, 1);
 });
 
-test("native haptic rejection can be ignored without subsequent input backlog", async () => {
-  let now = 1000;
-  let calls = 0;
+test("disabled haptic bridge is allocation free over repeated setup and disposal", () => {
+  const src = fs.readFileSync(path.join(root, "keyboard/feedback/haptics.ts"), "utf8");
   const h = load("keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"], {
-      Date: { now: () => now },
-      Haptics: { supportsHaptics: true,
-        transient() {
-          calls++;
-          return calls === 1 ? Promise.reject(new Error("haptics unavailable")) : Promise.resolve();
-        }
-      }
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Haptics: { transient() { throw new Error("native call is forbidden"); } }
     });
-  h.prepareKeyboardHaptics(true);
-  h.playKeyboardHaptic(true);
-  await Promise.resolve();
-  await Promise.resolve();
-  now += 70;
-  h.playKeyboardHaptic(true);
-  assert.equal(calls, 2);
-  h.disposeKeyboardHaptics();
+  for (let i = 0; i < 1000; i++) {
+    h.playKeyboardHaptic(true);
+    h.disposeKeyboardHaptics();
+  }
+  assert.doesNotMatch(src, /\bsetTimeout\s*\(|\bPromise\s*\.|\bawait\b/);
 });
 
 function mockTraceStorage() {
