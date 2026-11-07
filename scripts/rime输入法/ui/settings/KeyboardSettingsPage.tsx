@@ -21,6 +21,7 @@ export function KeyboardSettingsPage() {
   const [showToolbar, setShowToolbar] = useState(initial.toolbarPreferences.showToolbar);
   const [showSpaceLabel, setShowSpaceLabel] = useState(initial.keyFacePreferences.showSpaceLabel);
   const [spaceLabel, setSpaceLabel] = useState(initial.keyFacePreferences.spaceLabel);
+  const [hapticsEnabled, setHapticsEnabled] = useState(initial.feedbackPreferences.hapticsEnabled);
   const [keyPopupEnabled, setKeyPopupEnabled] = useState(initial.feedbackPreferences.keyPopupEnabled);
   const [customKeyboardHeight, setCustomKeyboardHeight] = useState(initial.layoutPreferences.keyboardBodyHeightOverride != null);
   const [keyboardHeight, setKeyboardHeight] = useState(
@@ -58,6 +59,13 @@ export function KeyboardSettingsPage() {
     setShowSpaceLabel(value);
   }
 
+
+  function changeHapticsEnabled(value: boolean) {
+    const current = readKeyboardSettings();
+    const feedbackPreferences = { ...current.feedbackPreferences, hapticsEnabled: value };
+    if (!persistKeyboardPatch({ feedbackPreferences })) return;
+    setHapticsEnabled(value);
+  }
 
   function changeKeyPopupEnabled(value: boolean) {
     const current = readKeyboardSettings();
@@ -145,13 +153,12 @@ export function KeyboardSettingsPage() {
     <List navigationTitle="键盘设置" navigationBarTitleDisplayMode="inline">
       <Section
         header={<Text>输入反馈</Text>}
-        footer={<Text>iOS 27.2 诊断版暂时关闭脚本触觉反馈，以排查延迟震动；原震动偏好已保留，按键预览和输入功能不受影响。</Text>}
+        footer={<Text>按键震动使用 Scripting 同步轻触反馈，关闭时不产生脚本触觉调用；切换设置后重新唤起键盘生效。</Text>}
       >
         <Toggle
-          title="按键震动反馈（诊断版暂停）"
-          value={false}
-          onChanged={() => {}}
-          disabled={true}
+          title="按键震动反馈"
+          value={hapticsEnabled}
+          onChanged={changeHapticsEnabled}
         />
         <Toggle
           title="按键预览 Popup"

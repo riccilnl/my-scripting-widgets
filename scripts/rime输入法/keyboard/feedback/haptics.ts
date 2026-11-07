@@ -1,18 +1,26 @@
 /**
- * iOS 27.2 diagnostic preview:
- * Suppress ALL script-originated haptics in the keyboard extension.
- *
- * Haptics.transient() uses an asynchronous native Core Haptics engine.
- * Even a resolved JS Promise does not establish that the physical event
- * has already played; no JS-side throttling can cancel native backlog.
- *
- * Do not edit the persisted feedback preference; it can be used again
- * when a verified immediate-feedback backend is available.
+ * Immediate iOS keyboard-tap feedback through Scripting's synchronous
+ * HapticFeedback helper. Do not use asynchronous native effects or
+ * retain/restart a Core Haptics player: late native playback must not be
+ * queued behind typing.
  */
-export function playKeyboardHaptic(_enabled: boolean): void {
-  // Deliberately no native Haptics, HapticEngine, or audio call.
+const MIN_FEEDBACK_INTERVAL_MS = 48;
+let lastFeedbackAt = 0;
+
+export function playKeyboardHaptic(enabled: boolean): void {
+  if (!enabled) return;
+  const now = Date.now();
+  if (lastFeedbackAt && now - lastFeedbackAt < MIN_FEEDBACK_INTERVAL_MS) return;
+  // HapticFeedback is a Scripting global; do not import it from "scripting".
+  try {
+    if (typeof HapticFeedback?.lightImpact !== "function") return;
+    HapticFeedback.lightImpact();
+    lastFeedbackAt = now;
+  } catch {
+    // A missing/failed native feedback must never interrupt keyboard input.
+  }
 }
 
 export function disposeKeyboardHaptics(): void {
-  // No native haptic resources are allocated in this preview.
+  lastFeedbackAt = 0;
 }

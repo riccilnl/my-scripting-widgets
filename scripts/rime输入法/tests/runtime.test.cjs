@@ -90,26 +90,37 @@ test("queue maintains FIFO for reentrant calls and ignores abandoned promises", 
   assert.deepEqual(a, [1, 2, 3, 5]);
 });
 
-test("iOS 27.2 diagnostic preview never submits native haptics for any key", () => {
-  const counts = { transient: 0, continuous: 0, engines: 0, feedback: 0 };
+test("official keyboard haptics use synchronous feedback without Core Haptics backlog", () => {
+  let now = 1000;
+  const stats = { light: 0, transient: 0, engines: 0 };
   const h = load("keyboard/feedback/haptics.ts",
     ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
-      Haptics: {
-        supportsHaptics: true,
-        transient() { counts.transient++; },
-        continuous() { counts.continuous++; }
-      },
-      HapticEngine: class {
-        constructor() { counts.engines++; }
-      },
-      HapticFeedback: { impact() { counts.feedback++; } }
+      Date: { now: () => now },
+      HapticFeedback: { lightImpact() { stats.light++; } },
+      Haptics: { transient() { stats.transient++; throw new Error("async forbidden"); } },
+      HapticEngine: class { constructor() { stats.engines++; } }
     });
-  for (let i = 0; i < 500; i++) h.playKeyboardHaptic(true);
-  for (let i = 0; i < 50; i++) h.playKeyboardHaptic(false);
+  for (let i = 0; i < 20; i++) { h.playKeyboardHaptic(true); now += 5; }
+  assert.deepEqual(stats, { light: 2, transient: 0, engines: 0 });
+  h.playKeyboardHaptic(false);
+  assert.equal(stats.light, 2, "disabled feedback must be silent");
   h.disposeKeyboardHaptics();
-  assert.deepEqual(counts, { transient: 0, continuous: 0, engines: 0, feedback: 0 });
+  h.playKeyboardHaptic(true);
+  assert.equal(stats.light, 3, "after keyboard lifecycle restart live taps resume");
 });
 
+test("native feedback failure cannot block input or create a future replay", () => {
+  let now = 1000;
+  let attempts = 0;
+  const h = load("keyboard/feedback/haptics.ts",
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Date: { now: () => now },
+      HapticFeedback: { lightImpact() { attempts++; throw new Error("unavailable"); } }
+    });
+  for (let i = 0; i < 20; i++) { h.playKeyboardHaptic(true); now += 10; }
+  assert.equal(attempts, 20);
+  h.disposeKeyboardHaptics();
+});
 test("bounded clipboard wait unblocks queued typing and drops late paste", async () => {
   let resolvePaste;
   const callbacks = [];
@@ -932,16 +943,18 @@ test("expanded grid reuses column and padded candidate arrays without changing h
   assert.match(source, /contentShape="rect"/);
 });
 
-test("haptic diagnostic mode leaves saved user preference unchanged and shows disabled toggle", () => {
+test("official haptic toggle writes existing preference and uses live value", () => {
   const settings = fs.readFileSync(path.join(root, "ui/settings/KeyboardSettingsPage.tsx"), "utf8");
   const source = fs.readFileSync(path.join(root, "keyboard/feedback/haptics.ts"), "utf8");
-  assert.match(settings, /title="按键震动反馈（诊断版暂停）"/);
-  assert.match(settings, /value=\{false\}[\s\S]*?disabled=\{true\}/);
-  assert.doesNotMatch(settings, /changeHapticsEnabled/);
-  assert.match(source, /function playKeyboardHaptic\(_enabled: boolean\)/);
-  assert.doesNotMatch(source, /\bglobalThis\b|\bstartAsync\b|\bmakePlayer\b/);
+  assert.match(settings, /title="按键震动反馈"/);
+  assert.match(settings, /value=\{hapticsEnabled\}/);
+  assert.match(settings, /onChanged=\{changeHapticsEnabled\}/);
+  assert.match(settings, /persistKeyboardPatch\(\{ feedbackPreferences \}\)/);
+  assert.match(settings, /feedbackPreferences = \{ \.\.\.current\.feedbackPreferences, hapticsEnabled: value \}/);
+  assert.doesNotMatch(settings, /诊断版暂停|disabled=\{true\}/);
+  assert.match(source, /HapticFeedback\.lightImpact\(\)/);
+  assert.doesNotMatch(source, /HapticEngine|Haptics\.transient\(/);
 });
-
 test("keyboard gestures continue to use the common haptic wrapper", () => {
   const keyboard = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   assert.match(keyboard, /onTouchStart=\{\(\) => playKeyboardHaptic\(hapticsEnabled\)\}/);
@@ -1044,17 +1057,11 @@ test("normal Rime initialization still returns open session with identical schem
   assert.equal(f.stats.closed, 1);
 });
 
-test("disabled haptic bridge is allocation free over repeated setup and disposal", () => {
-  const src = fs.readFileSync(path.join(root, "keyboard/feedback/haptics.ts"), "utf8");
-  const h = load("keyboard/feedback/haptics.ts",
-    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
-      Haptics: { transient() { throw new Error("native call is forbidden"); } }
-    });
-  for (let i = 0; i < 1000; i++) {
-    h.playKeyboardHaptic(true);
-    h.disposeKeyboardHaptics();
-  }
-  assert.doesNotMatch(src, /\bsetTimeout\s*\(|\bPromise\s*\.|\bawait\b/);
+test("synchronous haptic bridge uses no timers, promises or retained native players", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard/feedback/haptics.ts"), "utf8");
+  assert.doesNotMatch(source, /\bsetTimeout\s*\(|\bPromise\s*\.|\bawait\b/);
+  assert.doesNotMatch(source, /new HapticEngine\(|\.makePlayer\(|\.startAsync\(/);
+  assert.match(source, /MIN_FEEDBACK_INTERVAL_MS = 48/);
 });
 
 function mockTraceStorage() {
