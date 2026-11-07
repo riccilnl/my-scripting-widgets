@@ -7,6 +7,7 @@ export function resolveKeyboardHeaderMode(options: {
   candidateCount: number;
 }): KeyboardHeaderMode {
   if (!options.ready || options.error) return "status";
-  if (options.compositionActive || options.candidateCount > 0) return "candidate";
+  // A composition without candidates must not replace the toolbar with a blank strip.
+  if (options.candidateCount > 0) return "candidate";
   return "toolbar";
 }

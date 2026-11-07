@@ -24,6 +24,7 @@ import { resolveEffectiveColorScheme } from "../skin/appearance";
 import {
   resolveKeyboardLayout,
   createKeyboardMetricsResolver,
+  fitKeyboardLayoutToViewport,
   type KeyboardMetrics,
   type ResolvedKeyboardLayout
 } from "../layout/metrics";
@@ -895,11 +896,15 @@ function KeyboardRoot(props: {
     <GeometryReader>
       {(proxy: any) => {
         const width = Math.max(240, Number(proxy.size?.width ?? 390));
-        const metrics = metricsResolverRef.current!(width, props.layout, skin.geometry);
-        const totalHeight = props.layout.requestedHeight;
+        const layout = fitKeyboardLayoutToViewport(
+          props.layout,
+          Number(proxy.size?.height ?? NaN)
+        );
+        const metrics = metricsResolverRef.current!(width, layout, skin.geometry);
+        const totalHeight = layout.requestedHeight;
         return (
           <ZStack
-            frame={{ width, height: totalHeight, alignment: "center" as any }}
+            frame={{ width, height: totalHeight, alignment: "top" as any }}
           >
             <VStack
               frame={{ width, height: totalHeight }}

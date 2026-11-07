@@ -110,6 +110,28 @@ export function resolveKeyboardLayout(
   };
 }
 
+/**
+ * iOS can grant less height than requestHeight() requested. Keep the shared
+ * toolbar/candidate row in the visible viewport, then scale only key rows.
+ * Do not modify the user's stored layout preference.
+ */
+export function fitKeyboardLayoutToViewport(
+  layout: ResolvedKeyboardLayout,
+  availableHeight: number
+): ResolvedKeyboardLayout {
+  if (!Number.isFinite(availableHeight) ||
+      availableHeight < 168 ||
+      availableHeight >= layout.requestedHeight) return layout;
+
+  const topSurfaceHeight = Math.min(
+    layout.topSurfaceHeight,
+    Math.max(TOP_SURFACE_HEIGHT_MIN, Math.floor(availableHeight * 0.18))
+  );
+  const keyboardBodyHeight = availableHeight - topSurfaceHeight -
+    KEYBOARD_METRICS.rowSpacing - KEYBOARD_METRICS.bottomPadding;
+  return { keyboardBodyHeight, topSurfaceHeight, requestedHeight: availableHeight };
+}
+
 export function resolveKeyboardMetrics(
   availableWidth: number,
   layout: ResolvedKeyboardLayout,

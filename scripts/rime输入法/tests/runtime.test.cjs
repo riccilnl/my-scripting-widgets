@@ -623,7 +623,7 @@ test("keyboard metrics cache reuses geometry and invalidates on width/layout/ski
   assert.equal(resolver(760, changedLayout, changedGeometry), changedSkin);
   const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
   assert.match(source, /const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> \| null>\(null\);/);
-  assert.match(source, /metricsResolverRef\.current!\(width, props\.layout, skin\.geometry\)/);
+  assert.match(source, /metricsResolverRef\.current!\(width, layout, skin\.geometry\)/);
 });
 
 test("keyface memo cache remains tied to semantic and mode changes, not candidate state", () => {
@@ -1089,10 +1089,50 @@ test("auxiliary clipboard and common-phrase scroll panes expose continuous hit g
 
 test("official keyboard keeps Ricci attribution and a mutable main auto-update subscription", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "script.json"), "utf8"));
-  assert.equal(manifest.name, "rime输入法");
+  const expectedPreviewUrl = "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/fix/rime-ios27-header-20261107/previews/rime-ios27-header-20261107/Rime-ios27-header-latest.scripting";
+  const expectedOfficialUrl = "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/rime%E8%BE%93%E5%85%A5%E6%B3%95.scripting";
+  assert.ok(["rime输入法", "Rime顶栏诊断预览"].includes(manifest.name));
   assert.equal(manifest.author.name, "Ricci");
   assert.equal(manifest.remoteResource.autoUpdateInterval, 3600);
   assert.equal(manifest.remoteResource.url,
-    "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/rime%E8%BE%93%E5%85%A5%E6%B3%95.scripting");
+    manifest.name === "Rime顶栏诊断预览" ? expectedPreviewUrl : expectedOfficialUrl);
   assert.equal(manifest.version.split(".").length, 3);
+});
+
+
+test("iOS compact viewport keeps the candidate row visible without changing preferences", () => {
+  const { fitKeyboardLayoutToViewport } = load(
+    "layout/metrics.ts", ["fitKeyboardLayoutToViewport"], {
+      KEYBOARD_METRICS: { rowSpacing: 6, bottomPadding: 6 },
+      TOP_SURFACE_HEIGHT_MIN: 34
+    }
+  );
+  const original = { keyboardBodyHeight: 258, topSurfaceHeight: 56, requestedHeight: 326 };
+  assert.equal(fitKeyboardLayoutToViewport(original, 326), original);
+  assert.equal(fitKeyboardLayoutToViewport(original, 0), original);
+  assert.equal(fitKeyboardLayoutToViewport(original, NaN), original);
+  const narrow = fitKeyboardLayoutToViewport(original, 260);
+  assert.equal(narrow.requestedHeight, 260);
+  assert.ok(narrow.topSurfaceHeight >= 34);
+  assert.equal(narrow.keyboardBodyHeight + narrow.topSurfaceHeight + 12, 260);
+  assert.equal(original.requestedHeight, 326);
+  const rootSource = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  assert.match(rootSource, /fitKeyboardLayoutToViewport\([\s\S]*?proxy\.size\?\.height/);
+  assert.match(rootSource, /height: totalHeight, alignment: "top"/);
+});
+
+test("toolbar remains visible in initialization failures and empty compositions", () => {
+  const { resolveKeyboardHeaderMode } = load(
+    "keyboard/toolbar/headerMode.ts", ["resolveKeyboardHeaderMode"]
+  );
+  const base = { ready: true, error: null, compositionActive: false, candidateCount: 0 };
+  assert.equal(resolveKeyboardHeaderMode(base), "toolbar");
+  assert.equal(resolveKeyboardHeaderMode({ ...base, compositionActive: true }), "toolbar");
+  assert.equal(resolveKeyboardHeaderMode({ ...base, candidateCount: 3 }), "candidate");
+  assert.equal(resolveKeyboardHeaderMode({ ...base, ready: false }), "status");
+  assert.equal(resolveKeyboardHeaderMode({ ...base, error: "no schema" }), "status");
+  const bar = fs.readFileSync(path.join(root, "keyboard/components/CandidateBar.tsx"), "utf8");
+  assert.match(bar, /const toolbarMode = headerMode !== "candidate"/);
+  assert.match(bar, /statusWidth > 0/);
+  assert.match(bar, /<ToolbarStrip/);
 });

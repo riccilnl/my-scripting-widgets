@@ -52,7 +52,8 @@ export function CandidateBar(props: Props) {
     compositionActive: props.compositionActive,
     candidateCount: props.candidates.length
   });
-  const toolbarMode = headerMode === "toolbar";
+  // Keep the user's toolbar visible while Rime initializes or reports an error.
+  const toolbarMode = headerMode !== "candidate";
   const rightButtonImage = hasCandidates
     ? props.expanded
       ? "chevron.up.circle"
@@ -86,6 +87,9 @@ export function CandidateBar(props: Props) {
   const centerWidth = toolbarMode
     ? Math.max(0, contentWidth - edgeButtonWidth * 2 - edgeSpacing * 2)
     : Math.max(0, contentWidth - edgeButtonWidth - edgeSpacing);
+  const statusWidth = headerMode === "status"
+    ? Math.min(120, centerWidth * 0.42)
+    : 0;
 
   return (
     <HStack spacing={0} frame={{ width: props.width, height: props.height }}>
@@ -112,14 +116,24 @@ export function CandidateBar(props: Props) {
 
         {toolbarMode
           ? (
-            <ToolbarStrip
-              items={props.toolbarItems}
-              colors={props.colors}
-              width={centerWidth}
-              height={props.height}
-              skin={props.skin}
-              onCommand={props.onCommand}
-            />
+            <HStack spacing={0} frame={{ width: centerWidth, height: props.height }}>
+              <ToolbarStrip
+                items={props.toolbarItems}
+                colors={props.colors}
+                width={Math.max(0, centerWidth - statusWidth)}
+                height={props.height}
+                skin={props.skin}
+                onCommand={props.onCommand}
+              />
+              {statusWidth > 0
+                ? <Text
+                    font={props.skin.typography.status.fontSize}
+                    foregroundStyle={props.colors.secondaryForeground as any}
+                    lineLimit={1}
+                    frame={{ width: statusWidth, height: props.height }}
+                  >{status}</Text>
+                : null}
+            </HStack>
           )
           : hasCandidates
           ? (
