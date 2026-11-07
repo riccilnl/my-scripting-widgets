@@ -29,7 +29,7 @@ export function T9PinyinColumn(props: Props) {
               key={`t9-left-${index}-${option}`}
               font={props.options.length > 0 ? 17 : 18}
               lineLimit={1}
-              minimumScaleFactor={0.7}
+              minScaleFactor={0.7}
               frame={{ width: props.width, height: props.height / 4, alignment: "center" as any }}
               contentShape="rect"
               onTapGesture={() => {

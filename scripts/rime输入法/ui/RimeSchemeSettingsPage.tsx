@@ -153,7 +153,7 @@ function ScalarControlRow(props: {
       <Picker
         title={setting.title}
         value={value}
-        onChanged={(next) => props.onChanged(updateSchemeScalarDraft(draft, setting.path, String(next)))}
+        onChanged={(next: string) => props.onChanged(updateSchemeScalarDraft(draft, setting.path, String(next)))}
         pickerStyle="menu"
       >
         {setting.choices.map((item) => <Text key={`${setting.path}-${item.value}`} tag={item.value}>{item.title}</Text>)}
@@ -439,6 +439,7 @@ function SchemeSwitchEditor(props: { scheme: SchemeDescriptor }) {
   }
 
   function commit() {
+    if (!draft) return;
     try {
       const errors = validateSchemeSwitchDraft(draft);
       if (errors.length > 0) {
@@ -532,7 +533,7 @@ function SchemeSwitchEditor(props: { scheme: SchemeDescriptor }) {
             <Picker
               title="状态"
               value={value}
-              onChanged={(next) => setDraft(updateSchemeSwitchDraft(draft, item.id, Number(next)))}
+              onChanged={(next: string) => setDraft(updateSchemeSwitchDraft(draft, item.id, Number(next)))}
               pickerStyle="menu"
             >
               {labels.map((label, index) => <Text key={`${item.index}-${index}`} tag={String(index)}>{label}</Text>)}

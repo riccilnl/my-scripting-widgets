@@ -133,13 +133,13 @@ function persistGesture(
 function GestureEditor(props: {
   layout: ChineseLayoutId;
   keyId: string;
-  gesture: ConfigurableKeyGesture;
+  gestureId: ConfigurableKeyGesture;
   title: string;
 }) {
-  const initial = initialEditorState(props.layout, props.keyId, props.gesture);
+  const initial = initialEditorState(props.layout, props.keyId, props.gestureId);
   const [mode, setMode] = useState<EditableMode>(initial.mode);
   const [text, setText] = useState(initial.text);
-  const defaultCommand = defaultKeyGestureCommand(props.layout, props.keyId, props.gesture);
+  const defaultCommand = defaultKeyGestureCommand(props.layout, props.keyId, props.gestureId);
 
   function changeMode(value: string) {
     const next: EditableMode = value === "none"
@@ -151,7 +151,7 @@ function GestureEditor(props: {
     const nextText = next === "functionInstruction"
       ? (functionInstructionForCommand(defaultCommand) ?? "")
       : (text || commandText(defaultCommand));
-    if (!persistGesture(props.layout, props.keyId, props.gesture, next, nextText)) return;
+    if (!persistGesture(props.layout, props.keyId, props.gestureId, next, nextText)) return;
     setMode(next);
     if (nextText !== text) setText(nextText);
   }
@@ -160,10 +160,10 @@ function GestureEditor(props: {
     if (mode === "functionInstruction") {
       setText(value);
       if (!resolveFunctionInstruction(value)) return;
-      void persistGesture(props.layout, props.keyId, props.gesture, mode, value);
+      void persistGesture(props.layout, props.keyId, props.gestureId, mode, value);
       return;
     }
-    if (!persistGesture(props.layout, props.keyId, props.gesture, mode, value)) return;
+    if (!persistGesture(props.layout, props.keyId, props.gestureId, mode, value)) return;
     setText(value);
   }
 
@@ -221,7 +221,7 @@ function KeyActionEditorPage(props: {
           key={gesture}
           layout={props.layout}
           keyId={props.keyId}
-          gesture={gesture}
+          gestureId={gesture}
           title={GESTURE_TITLES[gesture]}
         />
       ))}
