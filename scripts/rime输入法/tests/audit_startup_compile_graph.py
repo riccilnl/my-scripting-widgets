@@ -65,7 +65,7 @@ def audit() -> dict[str, object]:
     b = static_graph(optimized)
     assert a["entry_bytes"] == b["entry_bytes"]
     assert a["entry_direct_imports"] == b["entry_direct_imports"] == 32
-    assert a["eager_modules"] == 60 and b["eager_modules"] == 59
+    assert a["eager_modules"] == 61 and b["eager_modules"] == 60
     delta = a["eager_source_bytes"] - b["eager_source_bytes"]
     assert 24000 < delta < 27000, delta
     assert "core/rime/T9BridgeAsset.ts" in a["eager_paths"]

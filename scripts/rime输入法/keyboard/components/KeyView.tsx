@@ -1,4 +1,5 @@
 import {
+  Device,
   DragGesture,
   HStack,
   Image,
@@ -23,14 +24,17 @@ import {
 import { commandForTouchResolution } from "../input/keyActionResolver";
 import {
   BACKSPACE_LONG_PRESS_DURATION,
+  BACKSPACE_REPEAT_SAFETY_DURATION,
   createBackspaceRepeatController,
   shouldCancelBackspaceRepeat
 } from "../input/BackspaceRepeatController";
 import { createSpaceDragController } from "../input/SpaceDragController";
+import { createNativeTouchAdapter, type NativeKeyTouchEvent } from "../input/NativeTouchAdapter";
 import { keyPressVisualState } from "../feedback/keyPressVisual";
 import { projectBaseKeyFace } from "../keyface/BaseKeyFaceProjector";
 
 const HIT_TEST_BACKGROUND = "rgba(0,0,0,0.001)";
+const USE_NATIVE_KEY_TOUCH = Number(String(Device.systemVersion ?? "").match(/\d+/)?.[0] ?? 0) >= 18;
 
 type Props = {
   definition: KeyDefinition;
@@ -90,6 +94,13 @@ export function KeyView(props: Props) {
   const [pressed, setPressed] = useState(false);
   const pressedRef = useRef(false);
   const machineRef = useRef<ReturnType<typeof createTouchIntentMachine> | null>(null);
+  const nativeTouchAdapterRef = useRef<ReturnType<typeof createNativeTouchAdapter> | null>(null);
+  const nativeCallbacksRef = useRef({
+    began: (_event: NativeKeyTouchEvent) => {},
+    moved: (_event: NativeKeyTouchEvent) => {},
+    ended: (_event: NativeKeyTouchEvent) => {},
+    cancelled: () => {}
+  });
   const spaceDragRef = useRef<ReturnType<typeof createSpaceDragController> | null>(null);
   const backspaceRepeatRef = useRef<ReturnType<typeof createBackspaceRepeatController> | null>(null);
   const backspaceRepeatConsumedRef = useRef(false);
@@ -197,9 +208,8 @@ export function KeyView(props: Props) {
     }, LONG_PRESS_DURATION);
   }
 
-  const manualGesture = useMemo(() => ({
-    gesture: DragGesture({ minDistance: 0, coordinateSpace: "local" })
-      .onChanged((details: any) => {
+  function handleTouchChanged(details: any) {
+
         const machine = machineRef.current;
         const spaceDrag = spaceDragRef.current;
         if (!machine || !spaceDrag) return;
@@ -246,8 +256,9 @@ export function KeyView(props: Props) {
         if (snapshot.state !== "pending" || snapshot.exceededSwipeThreshold) {
           clearBackspaceRepeatStartTimer();
         }
-      })
-      .onEnded((details: any) => {
+  }
+
+  function handleTouchEnded(details: any) {
         clearLongPressTimer();
         clearBackspaceRepeatStartTimer();
         backspaceRepeatRef.current?.stop();
@@ -280,12 +291,50 @@ export function KeyView(props: Props) {
         spaceDrag.reset();
         setPressedVisual(false);
         emitResolution(resolution);
-      }),
+  }
+
+  function cancelTouchWithoutCommit() {
+    clearLongPressTimer();
+    clearBackspaceRepeatStartTimer();
+    stopBackspaceRepeat();
+    backspaceRepeatConsumedRef.current = false;
+    machineRef.current?.cancel();
+    spaceDragRef.current?.reset();
+    setPressedVisual(false);
+  }
+
+  // Callback indirection keeps the native surface stable while React rerenders.
+  nativeCallbacksRef.current = {
+    began: handleTouchChanged,
+    moved: handleTouchChanged,
+    ended: handleTouchEnded,
+    cancelled: cancelTouchWithoutCommit
+  };
+  if (!nativeTouchAdapterRef.current) {
+    nativeTouchAdapterRef.current = createNativeTouchAdapter({
+      began: (event) => nativeCallbacksRef.current.began(event),
+      moved: (event) => nativeCallbacksRef.current.moved(event),
+      ended: (event) => nativeCallbacksRef.current.ended(event),
+      cancelled: () => nativeCallbacksRef.current.cancelled()
+    }, props.repeatBackspace ? BACKSPACE_REPEAT_SAFETY_DURATION + 100 : undefined);
+  }
+  const nativeTouchProps = useMemo(() => ({
+    onTouchGesture: {
+      onEvent: (event: NativeKeyTouchEvent) => nativeTouchAdapterRef.current?.receive(event)
+    }
+  }), []);
+  // Keep DragGesture on iOS 17 only. Never attach both gesture systems.
+  const manualGesture = useMemo(() => USE_NATIVE_KEY_TOUCH ? undefined : ({
+    gesture: DragGesture({ minDistance: 0, coordinateSpace: "local" })
+      .onChanged((details: any) => handleTouchChanged(details))
+      .onEnded((details: any) => handleTouchEnded(details)),
     mask: "gesture" as any
   }), []);
 
+
   useEffect(() => {
     return () => {
+      nativeTouchAdapterRef.current?.dispose();
       clearLongPressTimer();
       clearBackspaceRepeatStartTimer();
       stopBackspaceRepeat();
@@ -302,7 +351,7 @@ export function KeyView(props: Props) {
       background={HIT_TEST_BACKGROUND as any}
       contentShape="rect"
       zIndex={popupVisible ? 50 : pressed ? 5 : 0}
-      highPriorityGesture={manualGesture}
+      {...(USE_NATIVE_KEY_TOUCH ? nativeTouchProps as any : { highPriorityGesture: manualGesture })}
     >
       <VStack
         spacing={0}

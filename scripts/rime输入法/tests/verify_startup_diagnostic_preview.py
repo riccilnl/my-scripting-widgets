@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the OTA diagnostics 0.3.63 archive and pinned compatibility URLs.
+"""Check the OTA diagnostics 0.3.64 archive and pinned compatibility URLs.
 
 This is deliberately separate from the one-off independent experiment,
 because the user's existing iPhone project follows the diagnostics OTA channel.
@@ -20,7 +20,7 @@ from create_startup_diagnostic_preview import (
     REMOTE_ARCHIVE_NAME, REMOTE_ARCHIVE_URL
 )
 
-VERSION = "0.3.63"
+VERSION = "0.3.64"
 FROZEN_PREVIOUS_ARCHIVES = {
     "0.3.57": "5fea010126cc97eda89cb1ba376d83b93dad636d29be33fe4554e7246e5ce97f",
     "0.3.58": "5725c42b3e9ae1157772ac6a527a072908eda7f7e808456d731093d26deb065c",
@@ -28,6 +28,7 @@ FROZEN_PREVIOUS_ARCHIVES = {
     "0.3.60": "df396887fe6f6f7fd10723c54ff342300b347d9a825c179114a920105a258c3f",
     "0.3.61": "efc686cdc306773af767b966968284b133db85102f55ea6fc2cf56b1d16d5c8f",
     "0.3.62": "83f8e48e5b7c7078bb34fe6cd7ac3d4ea0099edda3048499d008e55ec79dcd32",
+    "0.3.63": "d93e797ec19530e99cb305f595d58b78fc7550eebbca80e4e6e853258051ca75",
 }
 
 
@@ -47,7 +48,7 @@ def verify() -> None:
     assert archive_alias.read_bytes() == target.read_bytes()
     assert info["size_bytes"] == target.stat().st_size
     assert info["sha256"] == hashlib.sha256(target.read_bytes()).hexdigest()
-    assert len(source) == info["entries"] == len(raw_source) == 88
+    assert len(source) == info["entries"] == len(raw_source) == 89
     assert "keyboard.tsx" in source and "keyboard/main.tsx" not in source
     assert source["keyboard.tsx"] == raw_source["keyboard.tsx"]
     assert b"CustomKeyboard.present(" in source["keyboard.tsx"]
@@ -105,7 +106,7 @@ def verify() -> None:
         assert hashlib.sha256(old_path.read_bytes()).hexdigest() == expected_sha
         assert expected_sha != info["sha256"]
         print("STARTUP_TRACE_FROZEN_PASS", version, expected_sha)
-    print("STARTUP_TRACE_0363_SOURCE_PASS", len(source), info["sha256"])
+    print("STARTUP_TRACE_0364_SOURCE_PASS", len(source), info["sha256"])
 
 
 if __name__ == "__main__":

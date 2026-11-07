@@ -17,6 +17,16 @@ increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
+0.3.64 uses the Scripting 3.2.2 native keyboard touch interface
+on iOS 18+, following the independent BlackCCCat Scripting-Rime-
+Keyboard v4.0.0–4.0.4 approach. Native began/moved/ended/cancelled
+events, touchId ownership and a no-commit safety expiry replace
+DragGesture for dedicated keys. iOS 17 retains DragGesture only.
+Long-press delete safety remains bounded separately. The Rime
+engine, input semantics, candidate UI, verified scroll blur fix
+and haptics-isolation setting are unchanged. iOS 27.2 real-device
+acceptance is not yet complete.
+
 0.3.63 is the same existing OTA diagnostics preview. The user
 reported that 0.3.62 fixed blurred candidates but delayed haptic
 bursts persisted. iOS 27.2 diagnostic mode now sends ZERO

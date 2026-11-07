@@ -840,12 +840,84 @@ test("keyboard metrics cache reuses geometry and invalidates on width/layout/ski
   assert.match(source, /metricsResolverRef\.current!\(width, layout, skin\.geometry\)/);
 });
 
+test("Scripting 3.2.2 native key touch: one owner, ended commits exactly once", () => {
+  const timers = new Map();
+  let nextId = 0;
+  const fired = [];
+  const { createNativeTouchAdapter } = load(
+    "keyboard/input/NativeTouchAdapter.ts", ["createNativeTouchAdapter"], {
+      setTimeout: (fn, ms) => { const id = ++nextId; timers.set(id, { fn, ms }); return id; },
+      clearTimeout: id => timers.delete(id)
+    }
+  );
+  const adapter = createNativeTouchAdapter({
+    began: e => fired.push("begin:" + e.touchId),
+    moved: e => fired.push("move:" + e.touchId),
+    ended: e => fired.push("commit:" + e.touchId),
+    cancelled: () => fired.push("cancel")
+  });
+  const event = (touchId, phase) => ({ touchId, phase, translation: { width: 0, height: 0 } });
+  adapter.receive(event("a", "began"));
+  adapter.receive(event("b", "began"));
+  adapter.receive(event("b", "ended"));
+  adapter.receive(event("a", "moved"));
+  adapter.receive(event("a", "ended"));
+  adapter.receive(event("a", "ended"));
+  assert.deepEqual(fired, ["begin:a","move:a","commit:a"]);
+  assert.equal(timers.size, 0);
+  adapter.dispose();
+});
+
+test("Scripting native cancelled and lost-ended watchdog never commit stale keys", () => {
+  const timers = new Map();
+  let nextId = 0;
+  const fired = [];
+  const { createNativeTouchAdapter } = load(
+    "keyboard/input/NativeTouchAdapter.ts", ["createNativeTouchAdapter"], {
+      setTimeout: (fn, ms) => { const id = ++nextId; timers.set(id, { fn, ms }); return id; },
+      clearTimeout: id => timers.delete(id)
+    }
+  );
+  const adapter = createNativeTouchAdapter({
+    began: e => fired.push("begin:" + e.touchId),
+    moved: () => {},
+    ended: e => fired.push("commit:" + e.touchId),
+    cancelled: () => fired.push("cancel")
+  });
+  const event = (touchId, phase) => ({ touchId, phase, translation: { width: 0, height: 0 } });
+  adapter.receive(event("a", "began"));
+  adapter.receive(event("a", "cancelled"));
+  adapter.receive(event("a", "ended"));
+  adapter.receive(event("b", "began"));
+  assert.equal(timers.size, 1);
+  const safety = Array.from(timers.values())[0];
+  assert.equal(safety.ms, 1800);
+  safety.fn();
+  adapter.receive(event("b", "ended"));
+  adapter.receive(event("c", "began"));
+  adapter.receive(event("c", "ended"));
+  assert.deepEqual(fired, ["begin:a", "cancel", "begin:b", "cancel", "begin:c", "commit:c"]);
+  assert.equal(timers.size, 0);
+  adapter.dispose();
+});
+
+test("native key handler on iOS >=18 replaces rather than overlaps DragGesture", () => {
+  const code = fs.readFileSync(path.join(root,"keyboard/components/KeyView.tsx"),"utf8");
+  assert.ok(code.includes("Device.systemVersion"));
+  assert.ok(code.includes("USE_NATIVE_KEY_TOUCH ? nativeTouchProps as any : { highPriorityGesture: manualGesture }"));
+  assert.ok(code.includes("nativeTouchAdapterRef.current?.dispose()"));
+  assert.ok(code.includes("function cancelTouchWithoutCommit()"));
+  assert.ok(code.includes("BACKSPACE_REPEAT_SAFETY_DURATION + 100"));
+});
+
 test("keyface memo cache remains tied to semantic and mode changes, not candidate state", () => {
   const view = fs.readFileSync(path.join(root, "keyboard/components/KeyView.tsx"), "utf8");
   assert.match(view, /const face = useMemo\(\(\) => projectBaseKeyFace\(/);
   assert.match(view, /\[definition, preferences, props\.shifted, props\.capsLocked, props\.asciiMode\]\)/);
   assert.doesNotMatch(view, /\[candidate|highlightedIndex/);
-  assert.match(view, /const manualGesture = useMemo\(\(\) => \(\{/);
+  assert.match(view, /const manualGesture = useMemo\(\(\) => USE_NATIVE_KEY_TOUCH \? undefined/);
+  assert.match(view, /onTouchGesture:/);
+  assert.match(view, /nativeTouchAdapterRef\.current\?\.receive\(event\)/);
 });
 
 test("expanded grid reuses column and padded candidate arrays without changing hit layout", () => {
