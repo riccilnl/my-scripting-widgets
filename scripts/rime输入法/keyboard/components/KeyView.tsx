@@ -30,6 +30,7 @@ import {
 } from "../input/BackspaceRepeatController";
 import { createSpaceDragController } from "../input/SpaceDragController";
 import { createNativeTouchAdapter, type NativeKeyTouchEvent } from "../input/NativeTouchAdapter";
+import type { ScriptingNativeTouchViewProps } from "../input/ScriptingNativeTouchTypes";
 import { keyPressVisualState } from "../feedback/keyPressVisual";
 import { projectBaseKeyFace } from "../keyface/BaseKeyFaceProjector";
 
@@ -318,7 +319,7 @@ export function KeyView(props: Props) {
       cancelled: () => nativeCallbacksRef.current.cancelled()
     }, props.repeatBackspace ? BACKSPACE_REPEAT_SAFETY_DURATION + 100 : undefined);
   }
-  const nativeTouchProps = useMemo(() => ({
+  const nativeTouchProps: ScriptingNativeTouchViewProps = useMemo(() => ({
     onTouchGesture: {
       onEvent: (event: NativeKeyTouchEvent) => nativeTouchAdapterRef.current?.receive(event)
     }
@@ -351,7 +352,7 @@ export function KeyView(props: Props) {
       background={HIT_TEST_BACKGROUND as any}
       contentShape="rect"
       zIndex={popupVisible ? 50 : pressed ? 5 : 0}
-      {...(USE_NATIVE_KEY_TOUCH ? nativeTouchProps as any : { highPriorityGesture: manualGesture })}
+      {...(USE_NATIVE_KEY_TOUCH ? nativeTouchProps : { highPriorityGesture: manualGesture })}
     >
       <VStack
         spacing={0}

@@ -45,6 +45,8 @@ import { disposeKeyboardHaptics, playKeyboardHaptic } from "./keyboard/feedback/
 import { prepareKeyboardRimeRuntime } from "./keyboard/runtime/RimeRuntimeCoordinator";
 import { createStartupTrace, type StartupTrace } from "./keyboard/runtime/StartupTrace";
 import { clearKeyboardActionQueue, dispatchKeyboardAction } from "./keyboard/input/actionQueue";
+import { executeUnreadyInputFallback } from "./keyboard/input/UnreadyInputFallback";
+import { createT9ProbeDiagnostics } from "./keyboard/runtime/T9ProbeDiagnostics";
 import { applyRimeHostText } from "./keyboard/input/RimeHostTextBridge";
 import { executeHostCommand, isHostCommand } from "./keyboard/toolbar/hostCommand";
 import { KeyboardEditController } from "./keyboard/edit/EditController";
@@ -102,6 +104,7 @@ function KeyboardRoot(props: {
   if (!metricsResolverRef.current) metricsResolverRef.current = createKeyboardMetricsResolver();
   const engineRef = useRef<RimeEngine | null>(null);
   const controllerRef = useRef<InputController | null>(null);
+  const rimeFailedRef = useRef(false);
   const candidateStoreRef = useRef<CandidateViewStore | null>(null);
   if (!candidateStoreRef.current) candidateStoreRef.current = new CandidateViewStore();
   const candidateStore = candidateStoreRef.current;
@@ -171,6 +174,7 @@ function KeyboardRoot(props: {
     clearKeyboardActionQueue();
     const chineseLayout = chineseLayoutRef.current;
     const preferredSchemaId = initialSettings.schemes[chineseLayout];
+    const t9ProbeDiagnostics = chineseLayout === "t9" ? createT9ProbeDiagnostics() : null;
 
     void prepareKeyboardRimeRuntime({
       chineseLayout,
@@ -184,7 +188,9 @@ function KeyboardRoot(props: {
           return;
         }
         engineRef.current = engine;
+        if (t9ProbeDiagnostics) engine.setT9ProbeObserver((timing) => t9ProbeDiagnostics.record(timing));
         controllerRef.current = new InputController(engine);
+        rimeFailedRef.current = false;
         setAsciiMode(engine.asciiMode);
         setReady(true);
         startupTrace?.mark("ui.readyRequested");
@@ -194,7 +200,9 @@ function KeyboardRoot(props: {
       })
       .catch((error) => {
         if (!disposed) {
-          setError((error as Error)?.message ?? String(error));
+          rimeFailedRef.current = true;
+          setAsciiMode(true);
+          setError("Rime 启动失败，已切换基础英文输入：" + ((error as Error)?.message ?? String(error)));
           startupTrace?.finish("error");
         }
       });
@@ -203,6 +211,7 @@ function KeyboardRoot(props: {
       disposed = true;
       startupTrace?.finish("cancelled");
       controllerRef.current = null;
+      t9ProbeDiagnostics?.flush();
       candidateStore.dispose();
       t9PinyinStore.dispose();
       try { engineRef.current?.close(); } catch {}
@@ -311,7 +320,13 @@ function KeyboardRoot(props: {
     }
     const controller = controllerRef.current;
     if (!controller) {
-      if (!firstInputBeforeReadyRef.current) {
+      const handled = executeUnreadyInputFallback(command, rimeFailedRef.current, {
+        insertText: (text) => editController.insertTextReplacingSelectAll(text),
+        deleteBackward: () => {
+          if (!editController.consumeSelectionForDeletion()) CustomKeyboard.deleteBackward();
+        }
+      });
+      if (!handled && !firstInputBeforeReadyRef.current) {
         firstInputBeforeReadyRef.current = true;
         props.startupTrace?.mark("input.firstBeforeReady");
       }

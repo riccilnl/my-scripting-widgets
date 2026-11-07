@@ -3,16 +3,9 @@
  * Exactly one finger owns a key. Cancellation and safety expiry NEVER commit.
  * The JS timer only restores key UI if the platform drops ended/cancelled.
  */
-export type NativeKeyTouchEvent = {
-  touchId: string;
-  phase: "began" | "moved" | "ended" | "cancelled";
-  translation: { width: number; height: number };
-  velocity?: { width: number; height: number };
-  reason?: string;
-  timestamp?: number;
-  receivedAt?: number;
-  dispatchAt?: number;
-};
+import type { ScriptingNativeTouchEvent } from "./ScriptingNativeTouchTypes";
+
+export type NativeKeyTouchEvent = ScriptingNativeTouchEvent;
 
 export const NATIVE_TOUCH_SAFETY_MS = 1800;
 

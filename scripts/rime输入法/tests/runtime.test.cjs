@@ -915,7 +915,7 @@ test("Scripting native cancelled and lost-ended watchdog never commit stale keys
 test("native key handler on iOS >=18 replaces rather than overlaps DragGesture", () => {
   const code = fs.readFileSync(path.join(root,"keyboard/components/KeyView.tsx"),"utf8");
   assert.ok(code.includes("Device.systemVersion"));
-  assert.ok(code.includes("USE_NATIVE_KEY_TOUCH ? nativeTouchProps as any : { highPriorityGesture: manualGesture }"));
+  assert.ok(code.includes("USE_NATIVE_KEY_TOUCH ? nativeTouchProps : { highPriorityGesture: manualGesture }"));
   assert.ok(code.includes("nativeTouchAdapterRef.current?.dispose()"));
   assert.ok(code.includes("function cancelTouchWithoutCommit()"));
   assert.ok(code.includes("BACKSPACE_REPEAT_SAFETY_DURATION + 100"));
@@ -1257,12 +1257,117 @@ test("unready Rime-bound input is marked once without storing text or replaying 
   const segment = source.slice(source.indexOf("    const controller = controllerRef.current;"),
     source.indexOf("    const effect = controller.dispatch(command,"));
   assert.match(segment, /if \(!controller\)/);
-  assert.match(segment, /if \(!firstInputBeforeReadyRef\.current\)/);
+  assert.match(segment, /if \(!handled && !firstInputBeforeReadyRef\.current\)/);
+  assert.match(segment, /executeUnreadyInputFallback\(command, rimeFailedRef\.current/);
   assert.match(segment, /props\.startupTrace\?\.mark\("input\.firstBeforeReady"\)/);
-  assert.doesNotMatch(segment, /command\.text|command\.index|setTimeout\(|queue|replay/);
+  assert.doesNotMatch(segment, /command\.index|setTimeout\(|queue|replay/);
   const firstIndex = source.indexOf('props.startupTrace?.mark("input.firstBeforeReady")');
   const lastIndex = source.indexOf("    const effect = controller.dispatch(command,");
   assert.ok(firstIndex >= 0 && firstIndex < lastIndex);
+});
+
+test("unready fallback passes only safe literal host actions during Rime startup", () => {
+  const { executeUnreadyInputFallback: run } = load(
+    "keyboard/input/UnreadyInputFallback.ts", ["executeUnreadyInputFallback"]);
+  const actions = [];
+  const host = {
+    insertText: value => actions.push(["insert", value]),
+    deleteBackward: () => actions.push(["delete"])
+  };
+  assert.equal(run({type:"character",text:"n"},false,host), false);
+  assert.equal(run({type:"rimeText",text:"orc"},false,host), false);
+  assert.equal(run({type:"toggleAscii"},false,host), false);
+  assert.equal(run({type:"insertDirect",text:"1"},false,host), true);
+  assert.equal(run({type:"insertLiteral",text:"+"},false,host), true);
+  assert.equal(run({type:"space"},false,host), true);
+  assert.equal(run({type:"return"},false,host), true);
+  assert.equal(run({type:"backspace"},false,host), true);
+  assert.deepEqual(actions,[["insert","1"],["insert","+"],["insert"," "],["insert","\n"],["delete"]]);
+});
+test("failed Rime switches to explicit QWERTY ASCII fallback; never leaks T9 shortcuts", () => {
+  const { executeUnreadyInputFallback: run } = load(
+    "keyboard/input/UnreadyInputFallback.ts", ["executeUnreadyInputFallback"]);
+  const text = [];
+  const host = { insertText: x => text.push(x), deleteBackward: () => text.push("<delete>") };
+  assert.equal(run({type:"character",text:"h"},true,host),true);
+  assert.equal(run({type:"rimeText",text:"t9-raw-shortcut"},true,host),false);
+  assert.equal(run({type:"selectCandidateOnPage",index:2},true,host),false);
+  assert.deepEqual(text,["h"]);
+  const src = fs.readFileSync(path.join(root,"keyboard.tsx"),"utf8");
+  assert.match(src, /rimeFailedRef\.current = true;\s*setAsciiMode\(true\)/);
+  assert.match(src, /Rime 启动失败，已切换基础英文输入/);
+});
+test("native touch project contract matches Scripting 3.2.2 event phases and timing", () => {
+  const src = fs.readFileSync(path.join(root,"keyboard/input/ScriptingNativeTouchTypes.ts"),"utf8");
+  for (const field of ["touchId: string","sequence: number","startLocation: { x: number; y: number }",
+    "location: { x: number; y: number }","translation: { width: number; height: number }",
+    "velocity: { width: number; height: number }","timestamp: number",
+    "receivedAt: number","dispatchAt: number","reason?: string"]) {
+    assert.ok(src.includes(field),field);
+  }
+  assert.match(src,/onEvent: \(event: ScriptingNativeTouchEvent\) => void/);
+  const keyview=fs.readFileSync(path.join(root,"keyboard/components/KeyView.tsx"),"utf8");
+  assert.match(keyview,/nativeTouchProps: ScriptingNativeTouchViewProps/);
+  assert.doesNotMatch(keyview,/nativeTouchProps as any/);
+});
+test("F23 timing is strictly opt-in and does not change probe processing", () => {
+  let time=100;
+  const native={process:0,read:0};
+  const session={
+    currentSchema:{id:"wanxiang_t9"},
+    processKey: () => { native.process++; return true; },
+    getProperty: () => { native.read++; return "ni;na"; }
+  };
+  const {RimeEngine}=load("core/rime/RimeEngine.ts",["RimeEngine"],{
+    T9_SCHEMA_ID:"wanxiang_t9",
+    t9ProbeNow:()=> ++time
+  });
+  const engine=new RimeEngine(session);
+  assert.deepEqual(Array.from(engine.queryT9PinyinOptions()),["ni","na"]);
+  assert.equal(time,100,"disabled trace does not call performance clock");
+  const seen=[];
+  engine.setT9ProbeObserver(report=> seen.push(report));
+  assert.deepEqual(Array.from(engine.queryT9PinyinOptions()),["ni","na"]);
+  assert.equal(native.process,2);
+  assert.equal(native.read,2);
+  assert.equal(seen.length,1);
+  assert.equal(seen[0].failed,false);
+  assert.equal(seen[0].totalMs,3);
+  assert.equal(seen[0].processMs,1);
+  assert.equal(seen[0].propertyMs,1);
+  assert.equal(seen[0].parseMs,1);
+});
+test("F23 diagnostics records aggregate timing only and checkpoints every 32 probes", () => {
+  const values=new Map();
+  const counts={writes:0};
+  const Storage={
+    get:(key)=>values.get(key)??null,
+    set:(key,value)=>{ values.set(key,value);counts.writes++; return true; }
+  };
+  const {T9ProbeDiagnostics,createT9ProbeDiagnostics,isT9ProbeEnabled,
+    setT9ProbeEnabled,readT9ProbeReport}=load("keyboard/runtime/T9ProbeDiagnostics.ts",
+    ["T9ProbeDiagnostics","createT9ProbeDiagnostics","isT9ProbeEnabled",
+     "setT9ProbeEnabled","readT9ProbeReport"],{Storage});
+  assert.equal(isT9ProbeEnabled(),false);
+  assert.equal(createT9ProbeDiagnostics(),null);
+  assert.equal(setT9ProbeEnabled(true),true);
+  const diag=createT9ProbeDiagnostics();
+  assert.ok(diag);
+  for(let i=0;i<32;i++)diag.record({processMs:1,propertyMs:2,parseMs:1,totalMs:4,failed:false});
+  assert.equal(counts.writes,2); // toggle + 32-probe checkpoint
+  const report=readT9ProbeReport();
+  assert.equal(report.count,32);
+  assert.equal(report.totalMs,128);
+  assert.equal(report.processMs,32);
+  assert.equal(report.maxMs,4);
+  assert.equal(report.failures,0);
+  assert.equal("key" in report,false);
+  assert.equal("text" in report,false);
+  assert.equal("candidate" in report,false);
+  diag.record({processMs:12,propertyMs:1,parseMs:1,totalMs:14,failed:true});
+  diag.flush();
+  assert.equal(readT9ProbeReport().slowCount,1);
+  assert.equal(readT9ProbeReport().failures,1);
 });
 
 test("copied startup report includes all phases and accurate differences", () => {

@@ -1,3 +1,4 @@
+import { t9ProbeNow, type T9ProbeTiming } from "../../keyboard/runtime/T9ProbeDiagnostics";
 import { KEY_DOWN, KEY_ESCAPE, KEY_PAGE_DOWN, KEY_PAGE_UP, KEY_UP } from "./keys";
 import { T9_SCHEMA_ID } from "./schema";
 
@@ -38,6 +39,12 @@ function parseBridgeOptions(value: string): string[] {
 }
 
 export class RimeEngine {
+  private t9ProbeObserver: ((timing: T9ProbeTiming) => void) | null = null;
+
+  setT9ProbeObserver(observer: ((timing: T9ProbeTiming) => void) | null): void {
+    this.t9ProbeObserver = observer;
+  }
+
   constructor(readonly session: Rime.Session) {}
 
   /**
@@ -255,14 +262,43 @@ export class RimeEngine {
 
   queryT9PinyinOptions(): string[] {
     if (!this.isT9BridgeTargetSchema()) return [];
+    const observer = this.t9ProbeObserver;
+    if (!observer) {
+      try {
+        this.session.processKey(T9_BRIDGE_PROBE_KEY);
+        return parseBridgeOptions(
+          String(this.session.getProperty(T9_BRIDGE_OPTIONS_PROPERTY) ?? "")
+        );
+      } catch { return []; }
+    }
+    const started = t9ProbeNow();
+    let processed = started;
+    let read = started;
+    let parsed = started;
+    let failed = false;
+    let options: string[] = [];
     try {
       this.session.processKey(T9_BRIDGE_PROBE_KEY);
-      return parseBridgeOptions(
-        String(this.session.getProperty(T9_BRIDGE_OPTIONS_PROPERTY) ?? "")
-      );
+      processed = t9ProbeNow();
+      const raw = String(this.session.getProperty(T9_BRIDGE_OPTIONS_PROPERTY) ?? "");
+      read = t9ProbeNow();
+      options = parseBridgeOptions(raw);
     } catch {
-      return [];
+      failed = true;
+    } finally {
+      parsed = t9ProbeNow();
+      // Diagnostic callbacks must never change input results.
+      try {
+        observer({
+          processMs: processed - started,
+          propertyMs: read - processed,
+          parseMs: parsed - read,
+          totalMs: parsed - started,
+          failed
+        });
+      } catch {}
     }
+    return options;
   }
 
   selectT9Pinyin(label: string): RimeProcessResult {
