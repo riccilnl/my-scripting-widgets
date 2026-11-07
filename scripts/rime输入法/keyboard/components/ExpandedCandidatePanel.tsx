@@ -118,7 +118,7 @@ export function ExpandedCandidatePanel(props: Props) {
                   <Text
                     font={props.skin.typography.candidate.fontSize}
                     lineLimit={1}
-                    minimumScaleFactor={0.65}
+                    minScaleFactor={0.65}
                     frame={{
                       width: Math.max(0, cellWidth - visualGap),
                       height: Math.max(0, cellHeight - visualGap)

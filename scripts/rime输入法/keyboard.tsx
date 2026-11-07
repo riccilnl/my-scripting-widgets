@@ -23,6 +23,7 @@ import { resolveSkin } from "./skin/registry";
 import { resolveEffectiveColorScheme } from "./skin/appearance";
 import {
   resolveKeyboardLayout,
+  fitKeyboardLayoutToViewport,
   createKeyboardMetricsResolver,
   type KeyboardMetrics,
   type ResolvedKeyboardLayout
@@ -32,7 +33,6 @@ import { InputController } from "./core/input/InputController";
 import { RimeEngine, type RimeSnapshot } from "./core/rime/RimeEngine";
 import { currentPageEntries, type CandidateEntry } from "./core/rime/CandidateView";
 import { CandidateBarSubscriber } from "./keyboard/components/CandidateBarSubscriber";
-import { shouldRenderKeyboardHeader } from "./keyboard/toolbar/headerMode";
 import { CandidateViewStore } from "./keyboard/runtime/CandidateViewStore";
 import { AuxiliarySurfaceHost, type AuxiliarySurfaceId } from "./keyboard/components/AuxiliarySurfaceHost";
 import { ExpandedCandidatePanel } from "./keyboard/components/ExpandedCandidatePanel";
@@ -900,11 +900,15 @@ function KeyboardRoot(props: {
     <GeometryReader>
       {(proxy: any) => {
         const width = Math.max(240, Number(proxy.size?.width ?? 390));
-        const metrics = metricsResolverRef.current!(width, props.layout, skin.geometry);
-        const totalHeight = props.layout.requestedHeight;
+        // The host may grant less height than requested on newer iOS versions.
+        // Fit the keys to the real viewport and anchor the header at the top.
+        const measuredHeight = Number(proxy.size?.height ?? 0);
+        const layout = fitKeyboardLayoutToViewport(props.layout, measuredHeight);
+        const metrics = metricsResolverRef.current!(width, layout, skin.geometry);
+        const totalHeight = layout.requestedHeight;
         return (
           <ZStack
-            frame={{ width, height: totalHeight, alignment: "center" as any }}
+            frame={{ width, height: totalHeight, alignment: "topLeading" as any }}
           >
             <VStack
               frame={{ width, height: totalHeight }}
@@ -927,15 +931,9 @@ function KeyboardRoot(props: {
               )
               : (
             <VStack spacing={metrics.rowSpacing} frame={{ width: metrics.width }}>
-              {shouldRenderKeyboardHeader({
-                showToolbar,
-                ready,
-                error,
-                compositionActive,
-                candidateCount: candidateActionCount
-              }) ? (
-                <CandidateBarSubscriber
+              <CandidateBarSubscriber
                   store={candidateStore}
+                  showToolbar={showToolbar}
                   compositionActive={compositionActive}
                   ready={ready}
                   error={error}
@@ -950,11 +948,6 @@ function KeyboardRoot(props: {
                   onCommand={executeKeyCommand}
                   toolbarItems={toolbarItems}
                 />
-              ) : (
-                // Diagnostic comparison: no idle toolbar, home/dismiss icons,
-                // or candidate-bar subscriber nodes. Preserve keyboard geometry.
-                <VStack frame={{ width: metrics.width, height: metrics.candidateHeight }} />
-              )}
               {candidateExpanded
                 ? (
                   <ExpandedCandidatePanel

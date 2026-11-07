@@ -779,7 +779,7 @@ test("keyboard metrics cache reuses geometry and invalidates on width/layout/ski
   assert.equal(resolver(760, changedLayout, changedGeometry), changedSkin);
   const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   assert.match(source, /const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> \| null>\(null\);/);
-  assert.match(source, /metricsResolverRef\.current!\(width, props\.layout, skin\.geometry\)/);
+  assert.match(source, /metricsResolverRef\.current!\(width, layout, skin\.geometry\)/);
 });
 
 test("keyface memo cache remains tied to semantic and mode changes, not candidate state", () => {
@@ -1332,26 +1332,39 @@ test("toolbar visibility switch defaults on and migrates old preferences", () =>
   assert.equal(normalizeToolbarPreferencesValue({ items: [] }).showToolbar, true);
 });
 
-test("toolbar off removes only idle header nodes, retaining candidate and status displays", () => {
-  const { resolveKeyboardHeaderMode, shouldRenderKeyboardHeader } = load(
-    "keyboard/toolbar/headerMode.ts",
-    ["resolveKeyboardHeaderMode", "shouldRenderKeyboardHeader"]
-  );
+test("candidate/status header is independent from idle toolbar preference", () => {
+  const { resolveKeyboardHeaderMode } = load("keyboard/toolbar/headerMode.ts",
+    ["resolveKeyboardHeaderMode"]);
   const idle = { ready: true, error: null, compositionActive: false, candidateCount: 0 };
   assert.equal(resolveKeyboardHeaderMode(idle), "toolbar");
-  assert.equal(shouldRenderKeyboardHeader({ ...idle, showToolbar: true }), true);
-  assert.equal(shouldRenderKeyboardHeader({ ...idle, showToolbar: false }), false);
   for (const candidateCount of [1, 2, 3, 12]) {
-    const options = { ...idle, candidateCount, showToolbar: false };
-    assert.equal(resolveKeyboardHeaderMode(options), "candidate");
-    assert.equal(shouldRenderKeyboardHeader(options), true);
+    assert.equal(resolveKeyboardHeaderMode({ ...idle, candidateCount }), "candidate");
   }
-  assert.equal(shouldRenderKeyboardHeader({ ...idle,
-    compositionActive: true, showToolbar: false }), true);
-  assert.equal(shouldRenderKeyboardHeader({ ...idle,
-    ready: false, showToolbar: false }), true);
-  assert.equal(shouldRenderKeyboardHeader({ ...idle,
-    error: "failure", showToolbar: false }), true);
+  assert.equal(resolveKeyboardHeaderMode({ ...idle, compositionActive: true }), "status");
+  assert.equal(resolveKeyboardHeaderMode({ ...idle, ready: false }), "status");
+  assert.equal(resolveKeyboardHeaderMode({ ...idle, error: "failure" }), "status");
+});
+
+test("keyboard viewport fitting keeps the candidate strip visible", () => {
+  const { fitKeyboardLayoutToViewport, resolveKeyboardMetrics } =
+    load("layout/metrics.ts", ["fitKeyboardLayoutToViewport", "resolveKeyboardMetrics"],
+      { TOP_SURFACE_HEIGHT_MIN: 34 });
+  const layout = { keyboardBodyHeight: 258, topSurfaceHeight: 56, requestedHeight: 332 };
+  const geometry = {
+    t9LeftColumn: { min: 40, max: 200, fraction: 0.19 },
+    t9RightColumn: { min: 40, max: 90, fraction: 0.19 },
+    numericLeftColumn: { min: 35, max: 75, fraction: 0.17 },
+    numericRightColumn: { min: 35, max: 75, fraction: 0.17 }
+  };
+  assert.equal(fitKeyboardLayoutToViewport(layout, 0), layout);
+  assert.equal(fitKeyboardLayoutToViewport(layout, 400), layout);
+  for (const viewport of [180, 200, 240, 280, 320]) {
+    const fitted = fitKeyboardLayoutToViewport(layout, viewport);
+    const metrics = resolveKeyboardMetrics(390, fitted, geometry);
+    assert.ok(fitted.requestedHeight <= viewport, "height must fit the host");
+    assert.ok(metrics.candidateHeight >= 34, "candidate strip must remain present");
+    assert.ok(metrics.bodyHeight + metrics.candidateHeight + 12 <= viewport);
+  }
 });
 
 test("toolbar switch is persisted and does not change keyboard or candidate hit geometry", () => {
@@ -1367,8 +1380,14 @@ test("toolbar switch is persisted and does not change keyboard or candidate hit 
   assert.match(editor, /toolbarPreferences: \{ \.\.\.current\.toolbarPreferences, items: currentIds \}/);
   assert.match(runtime, /showToolbar: settings\.toolbarPreferences\.showToolbar/);
   assert.match(rootSource, /const showToolbar = initialSettings\.showToolbar/);
-  assert.match(rootSource, /shouldRenderKeyboardHeader\(\{[\s\S]*?candidateCount: candidateActionCount[\s\S]*?\}\) \? \(/);
-  assert.match(rootSource, /<CandidateBarSubscriber[\s\S]*?\) : \([\s\S]*?<VStack frame=\{\{ width: metrics\.width, height: metrics\.candidateHeight \}\} \/>/);
+  // An unmounted subscriber cannot receive candidates if the root's
+  // candidate count is stale. Keep one live header independent of idle settings.
+  assert.doesNotMatch(rootSource, /shouldRenderKeyboardHeader\(\{/);
+  assert.match(rootSource, /<CandidateBarSubscriber[\s\S]*?showToolbar=\{showToolbar\}/);
+  assert.match(rootSource, /const layout = fitKeyboardLayoutToViewport\(props\.layout, measuredHeight\)/);
+  assert.match(rootSource, /alignment: "topLeading" as any/);
+  assert.match(bar, /Rime 暂无候选词/);
+  assert.match(bar, /工具栏已关闭（可在设置中开启）/);
   assert.match(bar, /<ToolbarStrip/);
   assert.match(bar, /props\.candidates\.slice\(0, 12\)/);
   assert.match(rootSource, /CustomKeyboard\.setToolbarVisible\(false\)/);

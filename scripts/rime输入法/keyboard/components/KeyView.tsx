@@ -354,7 +354,7 @@ export function KeyView(props: Props) {
                   font={face.centerFontSizeOverride ?? typography.fontSize}
                   fontWeight={typography.fontWeight as any}
                   lineLimit={1}
-                  minimumScaleFactor={0.72}
+                  minScaleFactor={0.72}
                 >
                   {face.centerText}
                 </Text>
@@ -397,7 +397,7 @@ export function KeyView(props: Props) {
                             : skin.typography.keyHint.fontWeight) as any}
                           foregroundStyle={colors.secondaryForeground as any}
                           lineLimit={1}
-                          minimumScaleFactor={skin.visuals.keyHintMinScaleFactor}
+                          minScaleFactor={skin.visuals.keyHintMinScaleFactor}
                         >
                           {props.actionHints.topLeft.text}
                         </Text>
@@ -429,7 +429,7 @@ export function KeyView(props: Props) {
                             : skin.typography.keyHint.fontWeight) as any}
                           foregroundStyle={colors.secondaryForeground as any}
                           lineLimit={1}
-                          minimumScaleFactor={skin.visuals.keyHintMinScaleFactor}
+                          minScaleFactor={skin.visuals.keyHintMinScaleFactor}
                         >
                           {props.actionHints.topRight.text}
                         </Text>
@@ -473,7 +473,7 @@ export function KeyView(props: Props) {
                 <Text
                   font={skin.visuals.keyPopupFontSize}
                   lineLimit={1}
-                  minimumScaleFactor={0.52}
+                  minScaleFactor={0.52}
                 >
                   {popupLabel}
                 </Text>

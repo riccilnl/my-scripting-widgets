@@ -64,7 +64,7 @@ def audit() -> dict[str, object]:
     a = static_graph(original)
     b = static_graph(optimized)
     assert a["entry_bytes"] == b["entry_bytes"]
-    assert a["entry_direct_imports"] == b["entry_direct_imports"] == 33
+    assert a["entry_direct_imports"] == b["entry_direct_imports"] == 32
     assert a["eager_modules"] == 60 and b["eager_modules"] == 59
     delta = a["eager_source_bytes"] - b["eager_source_bytes"]
     assert 24000 < delta < 27000, delta

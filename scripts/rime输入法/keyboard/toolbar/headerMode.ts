@@ -7,21 +7,7 @@ export function resolveKeyboardHeaderMode(options: {
   candidateCount: number;
 }): KeyboardHeaderMode {
   if (!options.ready || options.error) return "status";
-  if (options.compositionActive || options.candidateCount > 0) return "candidate";
+  if (options.candidateCount > 0) return "candidate";
+  if (options.compositionActive) return "status";
   return "toolbar";
-}
-
-
-/**
- * Keep status/candidates visible regardless of the toolbar switch.
- * Suppress only the idle toolbar while preserving its reserved geometry.
- */
-export function shouldRenderKeyboardHeader(options: {
-  showToolbar: boolean;
-  ready: boolean;
-  error: string | null;
-  compositionActive: boolean;
-  candidateCount: number;
-}): boolean {
-  return options.showToolbar || resolveKeyboardHeaderMode(options) !== "toolbar";
 }

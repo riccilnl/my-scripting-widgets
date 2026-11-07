@@ -17,11 +17,17 @@ increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
-0.3.60 updates the same stable ZIP and the 0.3.46 pinned compatibility
-alias, restoring T9 pinyin options after partial selection while
+0.3.61 updates the EXISTING diagnostics preview (no extra app/branch),
+preserving its stable OTA URL and the 0.3.46 pinned compatibility alias.
+CandidateBarSubscriber stays mounted even with idle toolbar disabled.
+iOS keyboard height is fitted to the actual viewport and top-anchored.
+Missing Rime candidates show a status instead of a blank strip.
+Scripting TypeScript errors are fixed. Real-device iOS 27.2 verification
+remains pending. 0.3.60 and earlier historical snapshots stay frozen.
+
+0.3.60 previously restored T9 pinyin options after partial selection,
 retaining Rime-owned Chinese candidates and ranking. Fedora LuaJIT
-simulation passed; iPhone Scripting behavior is not yet accepted.
-The 0.3.59, 0.3.58 and 0.3.57 snapshots remain frozen.
+simulation passed; iPhone Scripting behavior remains unverified.
 
 0.3.59 previously followed the SAME mutable URL as 0.3.58.
 The embedded T9 Lua resource moved out of the initial TS import
@@ -40,9 +46,9 @@ initialization order are unchanged. Verify Chinese/ASCII T9 switching,
 pinyin selection, space swipes, 26-key input and expanded scrolling.
 
 0.3.57 introduced Settings -> 键盘设置 -> 动作与工具栏 ->
-显示工具栏（性能对照） switch. Off omits the idle toolbar
-nodes while retaining candidate and initialization-status headers.
-The original top height remains reserved. Reopen the keyboard
+显示工具栏（性能对照） switch. As of 0.3.61, off hides only
+toolbar buttons; the candidate subscriber remains mounted and
+the disabled-toolbar state is visible. Reopen the keyboard
 to apply settings. iPhone spinner reduction is unverified.
 
 Records only Rime startup phase names, elapsed times, layout and success/failure/cancel.
