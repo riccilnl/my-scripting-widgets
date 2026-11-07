@@ -17,6 +17,19 @@ increment the manifest version. Interval 3600 seconds is check cadence.
 Open its settings -> 性能诊断 -> 启用启动诊断.
 Dismiss and reopen the keyboard, then refresh this page.
 
+0.3.62 also replaces the pooled Core Haptics engine with a
+single non-queued native transient, suppressing backlogged vibration
+replays, and bounds stalled clipboard calls to 1200ms so the
+normal key-action FIFO resumes without a late paste.
+These are preventive source fixes; iOS 27.2 device acceptance
+remains pending.
+
+0.3.62 disables the iOS 26+ ScrollView edge blur on the toolbar
+and candidate scrolling surfaces, preserving horizontal scrolling,
+hit geometry, and the existing OTA URL. No changes to Rime engine,
+key heights, overlay stacking, or other keyboard applications.
+On-device iOS 27.2 rendering validation is still pending.
+
 0.3.61 updates the EXISTING diagnostics preview (no extra app/branch),
 preserving its stable OTA URL and the 0.3.46 pinned compatibility alias.
 CandidateBarSubscriber stays mounted even with idle toolbar disabled.

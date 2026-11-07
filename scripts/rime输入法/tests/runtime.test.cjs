@@ -90,6 +90,76 @@ test("queue maintains FIFO for reentrant calls and ignores abandoned promises", 
   assert.deepEqual(a, [1, 2, 3, 5]);
 });
 
+test("haptics never queue a delayed replay of prior key taps", async () => {
+  let clock = 1000;
+  let releaseNative;
+  const calls = [];
+  const { playKeyboardHaptic: play, disposeKeyboardHaptics: dispose } =
+    load("keyboard/feedback/haptics.ts", ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Date: { now: () => clock },
+      Haptics: {
+        supportsHaptics: true,
+        transient: (intensity, sharpness) => {
+          calls.push([intensity, sharpness]);
+          return new Promise((resolve) => { releaseNative = resolve; });
+        }
+      }
+    });
+  play(true);
+  for (let i = 0; i < 30; i++) { clock += 100; play(true); }
+  assert.equal(calls.length, 1, "native haptics pending means new taps are silent");
+  releaseNative();
+  await Promise.resolve();
+  await Promise.resolve();
+  clock += 100;
+  play(true);
+  assert.equal(calls.length, 2, "new live key tap can play after native completion");
+  dispose();
+  releaseNative();
+  await Promise.resolve();
+  await Promise.resolve();
+  play(false);
+  assert.equal(calls.length, 2);
+});
+
+test("bounded clipboard wait unblocks queued typing and drops late paste", async () => {
+  let resolvePaste;
+  const callbacks = [];
+  const inserted = [];
+  const { KeyboardEditController } = load(
+    "keyboard/edit/EditController.ts", ["KeyboardEditController"], {
+      CustomKeyboard: {
+        insertText: (value) => inserted.push(value),
+        get selectedText() { return ""; },
+        get textBeforeCursor() { return ""; },
+        get textAfterCursor() { return ""; },
+        get allText() { return ""; }
+      },
+      Pasteboard: {
+        getString: () => new Promise(resolve => { resolvePaste = resolve; })
+      },
+      setTimeout: (callback) => { callbacks.push(callback); return callbacks.length; },
+      clearTimeout: () => {}
+    }
+  );
+  const { dispatchKeyboardAction: dispatch, clearKeyboardActionQueue: clear } =
+    load("keyboard/input/actionQueue.ts", ["dispatchKeyboardAction", "clearKeyboardActionQueue"]);
+  clear();
+  const controller = new KeyboardEditController();
+  dispatch(() => controller.execute({ type: "paste" }));
+  dispatch(() => controller.insertTextReplacingSelectAll("后续输入"));
+  assert.deepEqual(inserted, [], "key action waits for paste but is not lost");
+  assert.equal(callbacks.length, 1, "only one deadline timer for the native clipboard operation");
+  callbacks[0]();
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.deepEqual(inserted, ["后续输入"], "typing resumes after native clipboard timeout");
+  resolvePaste("过期粘贴");
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+  assert.deepEqual(inserted, ["后续输入"], "late paste cannot reorder text");
+  controller.dispose();
+  clear();
+});
+
 test("host command forwards async edit completion to callers", async () => {
   let resolvePaste;
   const deferred = new Promise(resolve => { resolvePaste = resolve; });
@@ -802,95 +872,63 @@ test("expanded grid reuses column and padded candidate arrays without changing h
   assert.match(source, /contentShape="rect"/);
 });
 
-test("Haptics start/dispose races do not recreate players after keyboard unmount", async () => {
-  let releaseStart;
-  const stats = { constructed: 0, stopped: 0, disposed: 0, createdPlayers: 0, transient: 0 };
-  let owned;
+test("haptic preparation never constructs Core Haptics engine or player pool", () => {
+  const stats = { nativeEngineCreated: 0, transient: 0 };
   class Engine {
-    static supportsHaptics = true;
-    constructor() { stats.constructed++; owned = this; }
-    startAsync() { return new Promise(resolve => { releaseStart = resolve; }); }
-    stop() { stats.stopped++; }
-    dispose() { stats.disposed++; }
-    makePlayer() { stats.createdPlayers++; return { start() {} }; }
+    constructor() { stats.nativeEngineCreated++; }
   }
-  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
-    { HapticEngine: Engine, Haptics: { supportsHaptics: true, transient() { stats.transient++; } },
-      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {} }
-  );
-  prepareKeyboardHaptics(true);
-  assert.equal(stats.constructed, 1);
-  disposeKeyboardHaptics();
-  assert.equal(stats.stopped, 1);
-  assert.equal(stats.disposed, 1);
-  releaseStart();
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(stats.createdPlayers, 0);
-  owned.onStopped?.();
-  owned.onReset?.();
-  assert.equal(stats.constructed, 1);
-  playKeyboardHaptic(false);
-  assert.equal(stats.constructed, 1);
+  const h = load("keyboard/feedback/haptics.ts",
+    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      HapticEngine: Engine, Date: { now: () => 1000 },
+      Haptics: { supportsHaptics: true, transient() { stats.transient++; } }
+    });
+  h.prepareKeyboardHaptics(true);
+  h.playKeyboardHaptic(true);
+  h.disposeKeyboardHaptics();
+  assert.equal(stats.nativeEngineCreated, 0);
+  assert.equal(stats.transient, 1);
 });
 
-test("Haptics keeps only three reusable player objects during continuous typing", async () => {
-  const stats = { createdPlayers: 0, played: 0, constructed: 0, disposed: 0 };
-  class Engine {
-    static supportsHaptics = true;
-    constructor() { stats.constructed++; }
-    startAsync() { return Promise.resolve(); }
-    stop() {}
-    dispose() { stats.disposed++; }
-    makePlayer() {
-      stats.createdPlayers++;
-      return { start() { stats.played++; } };
-    }
-  }
-  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
-    { HapticEngine: Engine,
-      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
-      Haptics: { supportsHaptics: true, transient() {} } }
-  );
-  prepareKeyboardHaptics(true);
-  await Promise.resolve();
-  await Promise.resolve();
-  for (let i = 0; i < 100; i++) playKeyboardHaptic(true);
-  assert.equal(stats.createdPlayers, 3);
-  assert.equal(stats.played, 100);
-  assert.equal(stats.constructed, 1);
-  disposeKeyboardHaptics();
-  assert.equal(stats.disposed, 1);
+test("rapid taps use a short haptic interval without replaying all taps", () => {
+  let now = 1000;
+  const stats = { transients: 0 };
+  const h = load("keyboard/feedback/haptics.ts",
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Date: { now: () => now },
+      Haptics: { supportsHaptics: true, transient() { stats.transients++; } }
+    });
+  for (let i = 0; i < 20; i++) { h.playKeyboardHaptic(true); now += 5; }
+  assert.equal(stats.transients, 3, "20 taps over 100ms should trigger only 3 spaced haptics");
+  h.playKeyboardHaptic(false);
+  assert.equal(stats.transients, 3);
+  h.disposeKeyboardHaptics();
 });
 
-test("rejected native Haptics stop/dispose promises are settled after teardown", async () => {
-  const stats = { stop: 0, dispose: 0 };
-  class Engine {
-    static supportsHaptics = true;
-    startAsync() { return Promise.resolve(); }
-    stop() { stats.stop++; return Promise.reject(new Error("native engine stopped")); }
-    dispose() { stats.dispose++; return Promise.reject(new Error("native resource released")); }
-    makePlayer() { return { start() {} }; }
-  }
-  const { prepareKeyboardHaptics, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"],
-    { HapticEngine: Engine,
-      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
-      Haptics: { supportsHaptics: true, transient() {} } }
-  );
-  prepareKeyboardHaptics(true);
+test("haptic teardown invalidates pending native completion", async () => {
+  let releaseFirst;
+  const stats = { transients: 0 };
+  let now = 1000;
+  const h = load("keyboard/feedback/haptics.ts",
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Date: { now: () => now },
+      Haptics: { supportsHaptics: true, transient() {
+        stats.transients++;
+        return stats.transients === 1
+          ? new Promise(resolve => { releaseFirst = resolve; })
+          : Promise.resolve();
+      } }
+    });
+  h.playKeyboardHaptic(true);
+  assert.equal(stats.transients, 1);
+  h.disposeKeyboardHaptics();
+  now += 80;
+  h.playKeyboardHaptic(true);
+  assert.equal(stats.transients, 2);
+  releaseFirst();
   await Promise.resolve();
   await Promise.resolve();
-  disposeKeyboardHaptics();
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(stats.stop, 1);
-  assert.equal(stats.dispose, 1);
+  h.playKeyboardHaptic(false);
+  assert.equal(stats.transients, 2);
 });
 
 test("async failure of fallback transient feedback is consumed without unhandled rejection", async () => {
@@ -1004,29 +1042,27 @@ test("normal Rime initialization still returns open session with identical schem
   assert.equal(f.stats.closed, 1);
 });
 
-test("keyboard teardown invalidates native haptics lifecycle callbacks", async () => {
-  let live;
-  class Engine {
-    static supportsHaptics = true;
-    constructor() { live=this; }
-    startAsync() { return Promise.resolve(); }
-    stop() { return Promise.resolve(); }
-    dispose() { return Promise.resolve(); }
-    makePlayer() { return { start() {} }; }
-  }
+test("native haptic rejection can be ignored without subsequent input backlog", async () => {
+  let now = 1000;
+  let calls = 0;
   const h = load("keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"], {
-      HapticEngine: Engine, HapticPattern: class {}, HapticEvent: class {},
-      HapticEventParameter: class {}, Haptics: { supportsHaptics: true, transient() {} }
+    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Date: { now: () => now },
+      Haptics: { supportsHaptics: true,
+        transient() {
+          calls++;
+          return calls === 1 ? Promise.reject(new Error("haptics unavailable")) : Promise.resolve();
+        }
+      }
     });
   h.prepareKeyboardHaptics(true);
+  h.playKeyboardHaptic(true);
   await Promise.resolve();
   await Promise.resolve();
-  assert.equal(typeof live.onStopped, "function");
-  assert.equal(typeof live.onReset, "function");
+  now += 70;
+  h.playKeyboardHaptic(true);
+  assert.equal(calls, 2);
   h.disposeKeyboardHaptics();
-  assert.equal(live.onStopped, null);
-  assert.equal(live.onReset, null);
 });
 
 function mockTraceStorage() {
@@ -1330,6 +1366,16 @@ test("toolbar visibility switch defaults on and migrates old preferences", () =>
   assert.deepEqual(Array.from(dirty.items), ["copy", "paste"]);
   assert.equal(dirty.showToolbar, false);
   assert.equal(normalizeToolbarPreferencesValue({ items: [] }).showToolbar, true);
+});
+
+test("toolbar and candidates suppress iOS 26+ scroll-edge blur without disabling horizontal scroll", () => {
+  for (const file of ["keyboard/toolbar/ToolbarStrip.tsx", "keyboard/components/CandidateBar.tsx"]) {
+    const source = fs.readFileSync(path.join(root, file), "utf8");
+    assert.match(source, /<ScrollView\s+scrollEdgeEffectHidden=\{true\}/);
+    assert.match(source, /axes="horizontal"/);
+    assert.match(source, /scrollIndicator="hidden"/);
+    assert.doesNotMatch(source, /blur=\{/);
+  }
 });
 
 test("candidate/status header is independent from idle toolbar preference", () => {

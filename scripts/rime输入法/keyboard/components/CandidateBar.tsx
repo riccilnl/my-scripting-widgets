@@ -133,6 +133,7 @@ export function CandidateBar(props: Props) {
                 candidateScrollProxyRef.current = proxy;
                 return (
                   <ScrollView
+                    scrollEdgeEffectHidden={true}
                     axes="horizontal"
                     scrollIndicator="hidden"
                     frame={{ width: centerWidth, height: props.height }}

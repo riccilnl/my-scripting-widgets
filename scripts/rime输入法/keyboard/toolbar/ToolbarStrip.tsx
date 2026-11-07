@@ -26,6 +26,7 @@ export function ToolbarStrip(props: {
 
   return (
     <ScrollView
+      scrollEdgeEffectHidden={true}
       axes="horizontal"
       scrollIndicator="hidden"
       frame={{ width: props.width, height: props.height }}
