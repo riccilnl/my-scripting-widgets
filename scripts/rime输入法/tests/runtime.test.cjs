@@ -90,23 +90,23 @@ test("queue maintains FIFO for reentrant calls and ignores abandoned promises", 
   assert.deepEqual(a, [1, 2, 3, 5]);
 });
 
-test("official keyboard haptics use synchronous feedback without Core Haptics backlog", () => {
+test("lighter keyboard haptics use synchronous selection tick without Core Haptics backlog", () => {
   let now = 1000;
-  const stats = { light: 0, transient: 0, engines: 0 };
+  const stats = { selection: 0, light: 0, transient: 0, engines: 0 };
   const h = load("keyboard/feedback/haptics.ts",
     ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
       Date: { now: () => now },
-      HapticFeedback: { lightImpact() { stats.light++; } },
+      HapticFeedback: { selection() { stats.selection++; }, lightImpact() { stats.light++; } },
       Haptics: { transient() { stats.transient++; throw new Error("async forbidden"); } },
       HapticEngine: class { constructor() { stats.engines++; } }
     });
   for (let i = 0; i < 20; i++) { h.playKeyboardHaptic(true); now += 5; }
-  assert.deepEqual(stats, { light: 2, transient: 0, engines: 0 });
+  assert.deepEqual(stats, { selection: 2, light: 0, transient: 0, engines: 0 });
   h.playKeyboardHaptic(false);
-  assert.equal(stats.light, 2, "disabled feedback must be silent");
+  assert.equal(stats.selection, 2, "disabled feedback must be silent");
   h.disposeKeyboardHaptics();
   h.playKeyboardHaptic(true);
-  assert.equal(stats.light, 3, "after keyboard lifecycle restart live taps resume");
+  assert.equal(stats.selection, 3, "after keyboard lifecycle restart live taps resume");
 });
 
 test("native feedback failure cannot block input or create a future replay", () => {
@@ -115,7 +115,7 @@ test("native feedback failure cannot block input or create a future replay", () 
   const h = load("keyboard/feedback/haptics.ts",
     ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
       Date: { now: () => now },
-      HapticFeedback: { lightImpact() { attempts++; throw new Error("unavailable"); } }
+      HapticFeedback: { selection() { attempts++; throw new Error("unavailable"); } }
     });
   for (let i = 0; i < 20; i++) { h.playKeyboardHaptic(true); now += 10; }
   assert.equal(attempts, 20);
@@ -952,7 +952,7 @@ test("official haptic toggle writes existing preference and uses live value", ()
   assert.match(settings, /persistKeyboardPatch\(\{ feedbackPreferences \}\)/);
   assert.match(settings, /feedbackPreferences = \{ \.\.\.current\.feedbackPreferences, hapticsEnabled: value \}/);
   assert.doesNotMatch(settings, /诊断版暂停|disabled=\{true\}/);
-  assert.match(source, /HapticFeedback\.lightImpact\(\)/);
+  assert.match(source, /HapticFeedback\.selection\(\)/);
   assert.doesNotMatch(source, /HapticEngine|Haptics\.transient\(/);
 });
 test("keyboard gestures continue to use the common haptic wrapper", () => {
