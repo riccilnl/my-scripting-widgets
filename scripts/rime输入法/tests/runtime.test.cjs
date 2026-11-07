@@ -90,6 +90,64 @@ test("queue maintains FIFO for reentrant calls and ignores abandoned promises", 
   assert.deepEqual(a, [1, 2, 3, 5]);
 });
 
+test("iOS 27.2 diagnostic preview never submits native haptics for any key", () => {
+  const counts = { transient: 0, continuous: 0, engines: 0, feedback: 0 };
+  const h = load("keyboard/feedback/haptics.ts",
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Haptics: {
+        supportsHaptics: true,
+        transient() { counts.transient++; },
+        continuous() { counts.continuous++; }
+      },
+      HapticEngine: class {
+        constructor() { counts.engines++; }
+      },
+      HapticFeedback: { impact() { counts.feedback++; } }
+    });
+  for (let i = 0; i < 500; i++) h.playKeyboardHaptic(true);
+  for (let i = 0; i < 50; i++) h.playKeyboardHaptic(false);
+  h.disposeKeyboardHaptics();
+  assert.deepEqual(counts, { transient: 0, continuous: 0, engines: 0, feedback: 0 });
+});
+
+test("bounded clipboard wait unblocks queued typing and drops late paste", async () => {
+  let resolvePaste;
+  const callbacks = [];
+  const inserted = [];
+  const { KeyboardEditController } = load(
+    "keyboard/edit/EditController.ts", ["KeyboardEditController"], {
+      CustomKeyboard: {
+        insertText: (value) => inserted.push(value),
+        get selectedText() { return ""; },
+        get textBeforeCursor() { return ""; },
+        get textAfterCursor() { return ""; },
+        get allText() { return ""; }
+      },
+      Pasteboard: {
+        getString: () => new Promise(resolve => { resolvePaste = resolve; })
+      },
+      setTimeout: (callback) => { callbacks.push(callback); return callbacks.length; },
+      clearTimeout: () => {}
+    }
+  );
+  const { dispatchKeyboardAction: dispatch, clearKeyboardActionQueue: clear } =
+    load("keyboard/input/actionQueue.ts", ["dispatchKeyboardAction", "clearKeyboardActionQueue"]);
+  clear();
+  const controller = new KeyboardEditController();
+  dispatch(() => controller.execute({ type: "paste" }));
+  dispatch(() => controller.insertTextReplacingSelectAll("后续输入"));
+  assert.deepEqual(inserted, [], "key action waits for paste but is not lost");
+  assert.equal(callbacks.length, 1, "only one deadline timer for the native clipboard operation");
+  callbacks[0]();
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.deepEqual(inserted, ["后续输入"], "typing resumes after native clipboard timeout");
+  resolvePaste("过期粘贴");
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+  assert.deepEqual(inserted, ["后续输入"], "late paste cannot reorder text");
+  controller.dispose();
+  clear();
+});
+
 test("host command forwards async edit completion to callers", async () => {
   let resolvePaste;
   const deferred = new Promise(resolve => { resolvePaste = resolve; });
@@ -370,6 +428,162 @@ test("T9 existence-check errors cannot be mistaken for absent user configuration
   assert.deepEqual(calls, []);
 });
 
+test("candidate view store publishes only visible changes and reuses stable lists", () => {
+  const { CandidateViewStore } = load("keyboard/runtime/CandidateViewStore.ts", ["CandidateViewStore"]);
+  const store = new CandidateViewStore();
+  const initial = store.getSnapshot();
+  assert.deepEqual(Array.from(initial.candidates), []);
+  assert.equal(initial.highlightedIndex, 0);
+
+  const updates = [];
+  const unsubscribe = store.subscribe(snapshot => updates.push(snapshot));
+  const first = [{ originalIndex: 0, candidate: { text: "甲", comment: "a" } },
+    { originalIndex: 1, candidate: { text: "乙", comment: "b" } }];
+  assert.equal(store.publish(first, 0), true);
+  assert.equal(updates.length, 1);
+  assert.equal(store.getSnapshot().candidates, first);
+  const snap1 = store.getSnapshot();
+
+  const same = first.map(entry => ({ originalIndex: entry.originalIndex,
+    candidate: { text: entry.candidate.text, comment: "changed comment" } }));
+  // CandidateBar renders only firstDisplayLine(text), not comments.
+  assert.equal(store.publish(same, 0), false);
+  assert.equal(store.getSnapshot(), snap1);
+  assert.equal(updates.length, 1);
+
+  // Highlight-only changes must notify CandidateBar but reuse its candidate list.
+  assert.equal(store.publish(same, 1), true);
+  assert.equal(updates.length, 2);
+  assert.equal(store.getSnapshot().candidates, first);
+  assert.equal(store.getSnapshot().highlightedIndex, 1);
+
+  // Candidate page selection changes displayed indices, even if text repeats.
+  const nextPage = [{ originalIndex: 5, candidate: { text: "甲" } }];
+  assert.equal(store.publish(nextPage, 0), true);
+  assert.equal(updates.length, 3);
+  assert.equal(store.getSnapshot().candidates, nextPage);
+  unsubscribe();
+  assert.equal(store.publish([], 0), true);
+  assert.equal(updates.length, 3);
+  store.dispose();
+  assert.equal(store.getSnapshot().candidates.length, 0);
+  assert.equal(store.publish(first, 0), false);
+  const late = store.subscribe(() => { throw Error("should not notify"); });
+  late();
+  assert.equal(updates.length, 3);
+});
+
+test("candidate-only updates are isolated from keyboard root, preserving space swipe thresholds", () => {
+  const rootSource = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
+  const subscriber = fs.readFileSync(path.join(root,
+    "keyboard/components/CandidateBarSubscriber.tsx"), "utf8");
+  const bar = fs.readFileSync(path.join(root, "keyboard/components/CandidateBar.tsx"), "utf8");
+
+  assert.match(rootSource, /const candidateStoreRef = useRef<CandidateViewStore \| null>\(null\);/);
+  assert.match(rootSource, /candidateStore\.publish\(nextCandidates, Math\.max\(0,/);
+  assert.match(rootSource, /setCandidateActionCount\(Math\.min\(3, nextCandidates\.length\)\)/);
+  assert.match(rootSource, /<CandidateBarSubscriber\s+store=\{candidateStore\}/);
+  assert.match(rootSource, /candidateStore\.dispose\(\)/);
+  assert.doesNotMatch(rootSource, /setCandidates\(|setHighlightedCandidateIndex\(/);
+  assert.match(subscriber, /const unsubscribe = store\.subscribe\(setSnapshot\)/);
+  assert.match(subscriber, /setSnapshot\(store\.getSnapshot\(\)\)/);
+  assert.match(subscriber, /return unsubscribe/);
+  assert.match(subscriber, /<CandidateBar[\s\S]*?candidates=\{snapshot\.candidates\}/);
+  assert.match(bar, /props\.candidates\.slice\(0, 12\)/);
+
+  const { spaceActionMap } = load("keyboard/actions/specialKeyActions.ts", ["spaceActionMap"]);
+  const serialized = count => JSON.stringify(spaceActionMap({
+    compositionActive: true, candidateCount: Math.min(3, count), t9: false
+  }));
+  for (const count of [0, 1, 2, 3, 4, 7, 12]) {
+    const baseline = JSON.stringify(spaceActionMap({
+      compositionActive: true, candidateCount: count, t9: false
+    }));
+    assert.equal(serialized(count), baseline, "space action count " + count);
+  }
+});
+
+test("nine-key pinyin choices are published only when displayed values change", () => {
+  const { T9PinyinViewStore } = load("keyboard/runtime/T9PinyinViewStore.ts", ["T9PinyinViewStore"]);
+  const store = new T9PinyinViewStore();
+  const empty = store.getSnapshot();
+  assert.deepEqual(Array.from(empty), []);
+
+  const updates = [];
+  const unsubscribe = store.subscribe(items => updates.push(items));
+  const first = ["ni", "hao"];
+  assert.equal(store.publish(first), true);
+  assert.equal(store.getSnapshot(), first);
+  assert.equal(updates.length, 1);
+
+  const same = ["ni", "hao"];
+  assert.equal(store.publish(same), false);
+  assert.equal(store.getSnapshot(), first);
+  assert.equal(updates.length, 1);
+
+  // Equal count alone is insufficient: the left column must update on new pinyin.
+  const changed = ["na", "hao"];
+  assert.equal(store.publish(changed), true);
+  assert.equal(store.getSnapshot(), changed);
+  assert.equal(updates.length, 2);
+
+  // Subscriber registration after an early native startup can read this snapshot.
+  assert.equal(store.getSnapshot(), changed);
+  unsubscribe();
+  assert.equal(store.publish([]), true);
+  assert.equal(updates.length, 2);
+
+  store.dispose();
+  assert.deepEqual(Array.from(store.getSnapshot()), []);
+  assert.equal(store.publish(["late"]), false);
+  const late = store.subscribe(() => { throw Error("disposed store must not notify"); });
+  late();
+  assert.equal(updates.length, 2);
+});
+
+test("T9 right-rail custom key shares the system color role with delete and enter", () => {
+  const { createKeyboardKeyCatalog } = load("keyboard/layout/KeyCatalog.ts",
+    ["createKeyboardKeyCatalog"], {
+      FROZEN_QWERTY_ROWS: [], FROZEN_T9_ROWS: [], FROZEN_NUMERIC_DIGIT_ROWS: [],
+      backspaceActionMap: () => ({ tap: { type: "backspace" } }),
+      spaceActionMap: () => ({ tap: { type: "space" } })
+    });
+  const command = { type: "clearComposition" };
+  const catalog = createKeyboardKeyCatalog({}, { label: "清", command });
+  assert.equal(catalog.t9.delimiter.id, "t9-delimiter");
+  assert.equal(catalog.t9.delimiter.visualRole, "system");
+  assert.equal(catalog.t9.backspace.visualRole, "system");
+  assert.equal(catalog.t9.enter.visualRole, "system");
+  assert.equal(catalog.t9.delimiter.semantic.text, "清");
+  assert.equal(catalog.t9.delimiter.actions.tap.type, "clearComposition");
+  const view = fs.readFileSync(path.join(root, "keyboard/components/KeyView.tsx"), "utf8");
+  assert.match(view, /skin\.keyVisualRoleOverrides\?\.\[definition\.id\] \?\? definition\.visualRole/);
+  assert.match(view, /colors\.keyBackgroundOverrides\?\.\[definition\.id\] \?\? colors\.keyBackgrounds\[visualRole\]/);
+});
+
+test("T9 pinyin updates repaint subscribed column without changing frozen touch geometry", () => {
+  const rootSource = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
+  const subscriber = fs.readFileSync(path.join(root,
+    "keyboard/components/T9PinyinColumnSubscriber.tsx"), "utf8");
+  const column = fs.readFileSync(path.join(root,
+    "keyboard/components/T9PinyinColumn.tsx"), "utf8");
+
+  assert.match(rootSource, /const t9PinyinStoreRef = useRef<T9PinyinViewStore \| null>\(null\)/);
+  assert.match(rootSource, /t9PinyinStore\.publish\(t9Options\)/);
+  assert.match(rootSource, /t9PinyinStore\.dispose\(\)/);
+  assert.match(rootSource, /<T9PinyinColumnSubscriber[\s\S]*?store=\{t9PinyinStore\}[\s\S]*?asciiMode=\{asciiMode\}/);
+  assert.doesNotMatch(rootSource, /setT9PinyinOptions\(/);
+  assert.doesNotMatch(rootSource, /options=\{asciiMode \? \[\] : t9PinyinOptions\}/);
+  assert.match(subscriber, /const unsubscribe = store\.subscribe\(setOptions\)/);
+  assert.match(subscriber, /setOptions\(store\.getSnapshot\(\)\)/);
+  assert.match(subscriber, /return unsubscribe/);
+  // When switching to ASCII mode, show punctuation rather than stale pinyin.
+  assert.match(subscriber, /options=\{asciiMode \? \[\] : options\}/);
+  assert.match(column, /props\.options\.length > 0 \? props\.options :/);
+  assert.match(column, /<ScrollView axes="vertical"/);
+  assert.match(column, /onPunctuation\?\.\(option\)/);
+});
+
 test("horizontal candidate bar uses gapless full-rectangle native buttons", () => {
   const bar = fs.readFileSync(path.join(root, "keyboard/components/CandidateBar.tsx"), "utf8");
   const candidateScroll = bar.slice(bar.indexOf('<ScrollView\n'), bar.indexOf('</ScrollView>') + '</ScrollView>'.length);
@@ -538,7 +752,7 @@ test("Shift/Caps never mutates Rime and keyboard skips T9 publish for it", () =>
   assert.equal(second.shifted, true);
   assert.equal(probes, 0);
   assert.equal(peeks, 2);
-  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard.tsx"), "utf8");
   assert.match(root, /if \(!effect\.steps && command\.type !== "toggleShift"\) publish\(effect\.snapshot\);/);
 });
 
@@ -578,7 +792,7 @@ test("keyboard editor disposal releases large undo data and leaves host untouche
 });
 
 test("T9 publish reads runtime mode/schema once before Lua probe", () => {
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const start = source.indexOf("  function publish(snapshot:");
   const end = source.indexOf("\n  function dispatch(", start);
   const publish = source.slice(start, end);
@@ -621,9 +835,79 @@ test("keyboard metrics cache reuses geometry and invalidates on width/layout/ski
   assert.notEqual(changedSkin, changedSize);
   assert.notEqual(changedSkin.t9.leftWidth, changedSize.t9.leftWidth);
   assert.equal(resolver(760, changedLayout, changedGeometry), changedSkin);
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   assert.match(source, /const metricsResolverRef = useRef<ReturnType<typeof createKeyboardMetricsResolver> \| null>\(null\);/);
-  assert.match(source, /metricsResolverRef\.current!\(width, props\.layout, skin\.geometry\)/);
+  assert.match(source, /metricsResolverRef\.current!\(width, layout, skin\.geometry\)/);
+});
+
+test("Scripting 3.2.2 native key touch: one owner, ended commits exactly once", () => {
+  const timers = new Map();
+  let nextId = 0;
+  const fired = [];
+  const { createNativeTouchAdapter } = load(
+    "keyboard/input/NativeTouchAdapter.ts", ["createNativeTouchAdapter"], {
+      setTimeout: (fn, ms) => { const id = ++nextId; timers.set(id, { fn, ms }); return id; },
+      clearTimeout: id => timers.delete(id)
+    }
+  );
+  const adapter = createNativeTouchAdapter({
+    began: e => fired.push("begin:" + e.touchId),
+    moved: e => fired.push("move:" + e.touchId),
+    ended: e => fired.push("commit:" + e.touchId),
+    cancelled: () => fired.push("cancel")
+  });
+  const event = (touchId, phase) => ({ touchId, phase, translation: { width: 0, height: 0 } });
+  adapter.receive(event("a", "began"));
+  adapter.receive(event("b", "began"));
+  adapter.receive(event("b", "ended"));
+  adapter.receive(event("a", "moved"));
+  adapter.receive(event("a", "ended"));
+  adapter.receive(event("a", "ended"));
+  assert.deepEqual(fired, ["begin:a","move:a","commit:a"]);
+  assert.equal(timers.size, 0);
+  adapter.dispose();
+});
+
+test("Scripting native cancelled and lost-ended watchdog never commit stale keys", () => {
+  const timers = new Map();
+  let nextId = 0;
+  const fired = [];
+  const { createNativeTouchAdapter } = load(
+    "keyboard/input/NativeTouchAdapter.ts", ["createNativeTouchAdapter"], {
+      setTimeout: (fn, ms) => { const id = ++nextId; timers.set(id, { fn, ms }); return id; },
+      clearTimeout: id => timers.delete(id)
+    }
+  );
+  const adapter = createNativeTouchAdapter({
+    began: e => fired.push("begin:" + e.touchId),
+    moved: () => {},
+    ended: e => fired.push("commit:" + e.touchId),
+    cancelled: () => fired.push("cancel")
+  });
+  const event = (touchId, phase) => ({ touchId, phase, translation: { width: 0, height: 0 } });
+  adapter.receive(event("a", "began"));
+  adapter.receive(event("a", "cancelled"));
+  adapter.receive(event("a", "ended"));
+  adapter.receive(event("b", "began"));
+  assert.equal(timers.size, 1);
+  const safety = Array.from(timers.values())[0];
+  assert.equal(safety.ms, 1800);
+  safety.fn();
+  adapter.receive(event("b", "ended"));
+  adapter.receive(event("c", "began"));
+  adapter.receive(event("c", "ended"));
+  assert.deepEqual(fired, ["begin:a", "cancel", "begin:b", "cancel", "begin:c", "commit:c"]);
+  assert.equal(timers.size, 0);
+  adapter.dispose();
+});
+
+test("native key handler on iOS >=18 replaces rather than overlaps DragGesture", () => {
+  const code = fs.readFileSync(path.join(root,"keyboard/components/KeyView.tsx"),"utf8");
+  assert.ok(code.includes("Device.systemVersion"));
+  assert.ok(code.includes("USE_NATIVE_KEY_TOUCH ? nativeTouchProps as any : { highPriorityGesture: manualGesture }"));
+  assert.ok(code.includes("nativeTouchAdapterRef.current?.dispose()"));
+  assert.ok(code.includes("function cancelTouchWithoutCommit()"));
+  assert.ok(code.includes("BACKSPACE_REPEAT_SAFETY_DURATION + 100"));
 });
 
 test("keyface memo cache remains tied to semantic and mode changes, not candidate state", () => {
@@ -631,7 +915,9 @@ test("keyface memo cache remains tied to semantic and mode changes, not candidat
   assert.match(view, /const face = useMemo\(\(\) => projectBaseKeyFace\(/);
   assert.match(view, /\[definition, preferences, props\.shifted, props\.capsLocked, props\.asciiMode\]\)/);
   assert.doesNotMatch(view, /\[candidate|highlightedIndex/);
-  assert.match(view, /const manualGesture = useMemo\(\(\) => \(\{/);
+  assert.match(view, /const manualGesture = useMemo\(\(\) => USE_NATIVE_KEY_TOUCH \? undefined/);
+  assert.match(view, /onTouchGesture:/);
+  assert.match(view, /nativeTouchAdapterRef\.current\?\.receive\(event\)/);
 });
 
 test("expanded grid reuses column and padded candidate arrays without changing hit layout", () => {
@@ -646,115 +932,25 @@ test("expanded grid reuses column and padded candidate arrays without changing h
   assert.match(source, /contentShape="rect"/);
 });
 
-test("Haptics start/dispose races do not recreate players after keyboard unmount", async () => {
-  let releaseStart;
-  const stats = { constructed: 0, stopped: 0, disposed: 0, createdPlayers: 0, transient: 0 };
-  let owned;
-  class Engine {
-    static supportsHaptics = true;
-    constructor() { stats.constructed++; owned = this; }
-    startAsync() { return new Promise(resolve => { releaseStart = resolve; }); }
-    stop() { stats.stopped++; }
-    dispose() { stats.disposed++; }
-    makePlayer() { stats.createdPlayers++; return { start() {} }; }
-  }
-  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
-    { HapticEngine: Engine, Haptics: { supportsHaptics: true, transient() { stats.transient++; } },
-      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {} }
-  );
-  prepareKeyboardHaptics(true);
-  assert.equal(stats.constructed, 1);
-  disposeKeyboardHaptics();
-  assert.equal(stats.stopped, 1);
-  assert.equal(stats.disposed, 1);
-  releaseStart();
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(stats.createdPlayers, 0);
-  owned.onStopped?.();
-  owned.onReset?.();
-  assert.equal(stats.constructed, 1);
-  playKeyboardHaptic(false);
-  assert.equal(stats.constructed, 1);
+test("haptic diagnostic mode leaves saved user preference unchanged and shows disabled toggle", () => {
+  const settings = fs.readFileSync(path.join(root, "ui/settings/KeyboardSettingsPage.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard/feedback/haptics.ts"), "utf8");
+  assert.match(settings, /title="按键震动反馈（诊断版暂停）"/);
+  assert.match(settings, /value=\{false\}[\s\S]*?disabled=\{true\}/);
+  assert.doesNotMatch(settings, /changeHapticsEnabled/);
+  assert.match(source, /function playKeyboardHaptic\(_enabled: boolean\)/);
+  assert.doesNotMatch(source, /\bglobalThis\b|\bstartAsync\b|\bmakePlayer\b/);
 });
 
-test("Haptics keeps only three reusable player objects during continuous typing", async () => {
-  const stats = { createdPlayers: 0, played: 0, constructed: 0, disposed: 0 };
-  class Engine {
-    static supportsHaptics = true;
-    constructor() { stats.constructed++; }
-    startAsync() { return Promise.resolve(); }
-    stop() {}
-    dispose() { stats.disposed++; }
-    makePlayer() {
-      stats.createdPlayers++;
-      return { start() { stats.played++; } };
-    }
-  }
-  const { prepareKeyboardHaptics, playKeyboardHaptic, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "playKeyboardHaptic", "disposeKeyboardHaptics"],
-    { HapticEngine: Engine,
-      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
-      Haptics: { supportsHaptics: true, transient() {} } }
-  );
-  prepareKeyboardHaptics(true);
-  await Promise.resolve();
-  await Promise.resolve();
-  for (let i = 0; i < 100; i++) playKeyboardHaptic(true);
-  assert.equal(stats.createdPlayers, 3);
-  assert.equal(stats.played, 100);
-  assert.equal(stats.constructed, 1);
-  disposeKeyboardHaptics();
-  assert.equal(stats.disposed, 1);
+test("keyboard gestures continue to use the common haptic wrapper", () => {
+  const keyboard = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
+  assert.match(keyboard, /onTouchStart=\{\(\) => playKeyboardHaptic\(hapticsEnabled\)\}/);
+  assert.match(keyboard, /dispatchKeyboardAction\(\(\) => dispatch\(command\)\)/);
+  assert.doesNotMatch(keyboard, /\bHaptics\.transient\(|new HapticEngine\(/);
 });
 
-test("rejected native Haptics stop/dispose promises are settled after teardown", async () => {
-  const stats = { stop: 0, dispose: 0 };
-  class Engine {
-    static supportsHaptics = true;
-    startAsync() { return Promise.resolve(); }
-    stop() { stats.stop++; return Promise.reject(new Error("native engine stopped")); }
-    dispose() { stats.dispose++; return Promise.reject(new Error("native resource released")); }
-    makePlayer() { return { start() {} }; }
-  }
-  const { prepareKeyboardHaptics, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"],
-    { HapticEngine: Engine,
-      HapticPattern: class {}, HapticEvent: class {}, HapticEventParameter: class {},
-      Haptics: { supportsHaptics: true, transient() {} } }
-  );
-  prepareKeyboardHaptics(true);
-  await Promise.resolve();
-  await Promise.resolve();
-  disposeKeyboardHaptics();
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(stats.stop, 1);
-  assert.equal(stats.dispose, 1);
-});
-
-test("async failure of fallback transient feedback is consumed without unhandled rejection", async () => {
-  const stats = { attempts: 0 };
-  const { playKeyboardHaptic, disposeKeyboardHaptics } = load(
-    "keyboard/feedback/haptics.ts",
-    ["playKeyboardHaptic", "disposeKeyboardHaptics"],
-    { Haptics: { supportsHaptics: true,
-      transient() { stats.attempts++; return Promise.reject(new Error("transient unavailable")); }
-    } }
-  );
-  playKeyboardHaptic(true);
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(stats.attempts, 1);
-  disposeKeyboardHaptics();
-});
-
-test("keyboard dismiss releases Core Haptics even when extension view stays mounted", () => {
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+test("keyboard dismiss retains a harmless no-op haptic cleanup hook", () => {
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const start = source.indexOf("  function dismissKeyboard() {");
   const end = source.indexOf("\n  function renderKey(", start);
   const block = source.slice(start, end);
@@ -764,7 +960,7 @@ test("keyboard dismiss releases Core Haptics even when extension view stays moun
 });
 
 function runtimeFixture(overrides = {}) {
-  const stats = { setup: 0, list: 0, sessions: 0, closed: 0 };
+  const stats = { setup: 0, list: 0, sessions: 0, closed: 0, deploymentReads: 0 };
   let cancelled = false;
   let setupResolve;
   class Session {
@@ -777,6 +973,10 @@ function runtimeFixture(overrides = {}) {
   }
   const Rime = {
     isSetUp: !overrides.setupPending,
+    get isDeploying() {
+      stats.deploymentReads++;
+      return Boolean(overrides.isDeploying);
+    },
     Session,
     setup: () => {
       stats.setup++;
@@ -844,29 +1044,17 @@ test("normal Rime initialization still returns open session with identical schem
   assert.equal(f.stats.closed, 1);
 });
 
-test("keyboard teardown invalidates native haptics lifecycle callbacks", async () => {
-  let live;
-  class Engine {
-    static supportsHaptics = true;
-    constructor() { live=this; }
-    startAsync() { return Promise.resolve(); }
-    stop() { return Promise.resolve(); }
-    dispose() { return Promise.resolve(); }
-    makePlayer() { return { start() {} }; }
-  }
+test("disabled haptic bridge is allocation free over repeated setup and disposal", () => {
+  const src = fs.readFileSync(path.join(root, "keyboard/feedback/haptics.ts"), "utf8");
   const h = load("keyboard/feedback/haptics.ts",
-    ["prepareKeyboardHaptics", "disposeKeyboardHaptics"], {
-      HapticEngine: Engine, HapticPattern: class {}, HapticEvent: class {},
-      HapticEventParameter: class {}, Haptics: { supportsHaptics: true, transient() {} }
+    ["playKeyboardHaptic", "disposeKeyboardHaptics"], {
+      Haptics: { transient() { throw new Error("native call is forbidden"); } }
     });
-  h.prepareKeyboardHaptics(true);
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(typeof live.onStopped, "function");
-  assert.equal(typeof live.onReset, "function");
-  h.disposeKeyboardHaptics();
-  assert.equal(live.onStopped, null);
-  assert.equal(live.onReset, null);
+  for (let i = 0; i < 1000; i++) {
+    h.playKeyboardHaptic(true);
+    h.disposeKeyboardHaptics();
+  }
+  assert.doesNotMatch(src, /\bsetTimeout\s*\(|\bPromise\s*\.|\bawait\b/);
 });
 
 function mockTraceStorage() {
@@ -961,7 +1149,7 @@ test("startup trace handles cancellation, storage failures, and bounds retained 
 });
 
 test("startup view diagnostics remain decoupled from production UI and avoid first-paint claims", () => {
-  const root = fs.readFileSync(path.join(__dirname, "../keyboard/main.tsx"), "utf8");
+  const root = fs.readFileSync(path.join(__dirname, "../keyboard.tsx"), "utf8");
   const settings = fs.readFileSync(path.join(__dirname, "../ui/settings/SettingsHomePage.tsx"), "utf8");
   const diagnostics = fs.readFileSync(path.join(__dirname, "../ui/settings/StartupDiagnosticsPage.tsx"), "utf8");
   assert.match(root, /const startupTrace = createStartupTrace\(\)/);
@@ -978,6 +1166,41 @@ test("startup view diagnostics remain decoupled from production UI and avoid fir
     /trace\?\.mark\("rime\.schemas\.begin"\)/);
   assert.match(fs.readFileSync(path.join(__dirname, "../core/rime/T9BridgeRuntime.ts"), "utf8"),
     /trace\?\.mark\("t9\.fastpath"\)/);
+});
+
+test("native session timing is isolated from wrapper and records deployment status only when enabled", async () => {
+  const events = [];
+  const tracing = runtimeFixture({ isDeploying: true });
+  const withTrace = await tracing.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang",
+    startupTrace: { mark: name => events.push(name) }
+  });
+  withTrace.close();
+  const stages = [
+    "rime.deployStatus.beforeSchemas.busy",
+    "rime.schemas.begin",
+    "rime.schemas.end",
+    "rime.deployStatus.beforeSession.busy",
+    "rime.session.begin",
+    "rime.session.native.begin",
+    "rime.session.native.end",
+    "rime.session.wrap.begin",
+    "rime.session.wrap.end",
+    "rime.session.end",
+    "rime.schemaSelection.begin",
+    "rime.runtimeReady"
+  ];
+  assert.deepEqual(events.filter(name => stages.includes(name)), stages);
+  assert.equal(tracing.stats.sessions, 1);
+  assert.equal(tracing.stats.closed, 1);
+  assert.equal(tracing.stats.deploymentReads, 2);
+  const withoutTrace = runtimeFixture();
+  const normal = await withoutTrace.prepareKeyboardRimeRuntime({
+    chineseLayout: "qwerty", preferredSchemaId: "wanxiang"
+  });
+  normal.close();
+  assert.equal(withoutTrace.stats.sessions, 1);
+  assert.equal(withoutTrace.stats.deploymentReads, 0);
 });
 
 test("warm Rime startup stages exclude setup and T9, cold startup includes setup", async () => {
@@ -1023,7 +1246,7 @@ test("cancelled startup has no runtime ready milestone and closes no unused sess
 });
 
 test("unready Rime-bound input is marked once without storing text or replaying keys", () => {
-  const source = fs.readFileSync(path.join(root, "keyboard/main.tsx"), "utf8");
+  const source = fs.readFileSync(path.join(root, "keyboard.tsx"), "utf8");
   const segment = source.slice(source.indexOf("    const controller = controllerRef.current;"),
     source.indexOf("    const effect = controller.dispatch(command,"));
   assert.match(segment, /if \(!controller\)/);
@@ -1052,6 +1275,34 @@ test("copied startup report includes all phases and accurate differences", () =>
   assert.equal(output.split("\n").filter(line => line.includes("：累计 ") && line.includes("本阶段 +")).length, 4);
   assert.ok(output.includes("不含静态模块加载、系统键盘切换和屏幕首次绘制"));
 });
+test("cold-start report separates native Session constructor, JS wrapping, and deployment snapshot", () => {
+  const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
+  const report = { version: 1, recordedAt: 1780000000000, layout: "t9", outcome: "ready", marks: [
+    { phase: "ui.present.return", elapsedMs: 5 },
+    { phase: "ui.effect.begin", elapsedMs: 122 },
+    { phase: "rime.setup.begin", elapsedMs: 125 },
+    { phase: "rime.setup.end", elapsedMs: 140 },
+    { phase: "rime.deployStatus.beforeSchemas.idle", elapsedMs: 140 },
+    { phase: "rime.schemas.begin", elapsedMs: 140 },
+    { phase: "rime.schemas.end", elapsedMs: 212 },
+    { phase: "rime.deployStatus.beforeSession.busy", elapsedMs: 213 },
+    { phase: "rime.session.native.begin", elapsedMs: 218 },
+    { phase: "rime.session.native.end", elapsedMs: 383 },
+    { phase: "rime.session.wrap.begin", elapsedMs: 383 },
+    { phase: "rime.session.wrap.end", elapsedMs: 384 },
+    { phase: "startup.ready", elapsedMs: 389 }
+  ] };
+  const output = formatStartupTraceReport(report);
+  assert.ok(output.includes("初始化路径：本次执行 Rime.setup"));
+  assert.ok(output.includes("这不等同于判断 iOS 进程是否冷启动"));
+  assert.ok(output.includes("部署状态采样：枚举前 未部署；Session 前 忙碌"));
+  assert.ok(output.includes("Effect 调度等待 117 ms"));
+  assert.ok(output.includes("Schema 枚举 72 ms"));
+  assert.ok(output.includes("Session 构造调用（含 JS/原生桥接） 165 ms"));
+  assert.ok(output.includes("Session JS 包装 1 ms"));
+  assert.ok(!output.includes("wanxiang") && !output.includes("候选词："));
+});
+
 test("startup report handles cancelled and failed sessions with zero phases", () => {
   const { formatStartupTraceReport } = load("ui/settings/formatStartupTraceReport.ts", ["formatStartupTraceReport"]);
   const empty = { version: 1, recordedAt: 0, layout: "qwerty", outcome: "cancelled", marks: [] };
@@ -1087,12 +1338,96 @@ test("auxiliary clipboard and common-phrase scroll panes expose continuous hit g
   assert.ok(source.includes("if (horizontal && dx <= -deleteThreshold) props.onDelete()"));
 });
 
-test("official keyboard keeps Ricci attribution and a mutable main auto-update subscription", () => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, "script.json"), "utf8"));
-  assert.equal(manifest.name, "rime输入法");
-  assert.equal(manifest.author.name, "Ricci");
-  assert.equal(manifest.remoteResource.autoUpdateInterval, 3600);
-  assert.equal(manifest.remoteResource.url,
-    "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/rime%E8%BE%93%E5%85%A5%E6%B3%95.scripting");
-  assert.equal(manifest.version.split(".").length, 3);
+
+test("toolbar visibility switch defaults on and migrates old preferences", () => {
+  const { defaultToolbarPreferencesValue, normalizeToolbarPreferencesValue } =
+    load("contracts/preferences.ts", [
+      "defaultToolbarPreferencesValue", "normalizeToolbarPreferencesValue"
+    ]);
+  assert.equal(defaultToolbarPreferencesValue().showToolbar, true);
+  const old = normalizeToolbarPreferencesValue({ items: ["copy", "paste"] });
+  assert.equal(old.showToolbar, true);
+  assert.deepEqual(Array.from(old.items), ["copy", "paste"]);
+  const off = normalizeToolbarPreferencesValue({ ...old, showToolbar: false });
+  assert.equal(off.showToolbar, false);
+  assert.deepEqual(Array.from(off.items), ["copy", "paste"]);
+  assert.equal(normalizeToolbarPreferencesValue({ showToolbar: false }).showToolbar, false);
+  const dirty = normalizeToolbarPreferencesValue({
+    showToolbar: false, items: ["copy", "copy", "invalid", "paste"]
+  });
+  assert.deepEqual(Array.from(dirty.items), ["copy", "paste"]);
+  assert.equal(dirty.showToolbar, false);
+  assert.equal(normalizeToolbarPreferencesValue({ items: [] }).showToolbar, true);
+});
+
+test("toolbar and candidates suppress iOS 26+ scroll-edge blur without disabling horizontal scroll", () => {
+  for (const file of ["keyboard/toolbar/ToolbarStrip.tsx", "keyboard/components/CandidateBar.tsx"]) {
+    const source = fs.readFileSync(path.join(root, file), "utf8");
+    assert.match(source, /<ScrollView\s+scrollEdgeEffectHidden=\{true\}/);
+    assert.match(source, /axes="horizontal"/);
+    assert.match(source, /scrollIndicator="hidden"/);
+    assert.doesNotMatch(source, /blur=\{/);
+  }
+});
+
+test("candidate/status header is independent from idle toolbar preference", () => {
+  const { resolveKeyboardHeaderMode } = load("keyboard/toolbar/headerMode.ts",
+    ["resolveKeyboardHeaderMode"]);
+  const idle = { ready: true, error: null, compositionActive: false, candidateCount: 0 };
+  assert.equal(resolveKeyboardHeaderMode(idle), "toolbar");
+  for (const candidateCount of [1, 2, 3, 12]) {
+    assert.equal(resolveKeyboardHeaderMode({ ...idle, candidateCount }), "candidate");
+  }
+  assert.equal(resolveKeyboardHeaderMode({ ...idle, compositionActive: true }), "status");
+  assert.equal(resolveKeyboardHeaderMode({ ...idle, ready: false }), "status");
+  assert.equal(resolveKeyboardHeaderMode({ ...idle, error: "failure" }), "status");
+});
+
+test("keyboard viewport fitting keeps the candidate strip visible", () => {
+  const { fitKeyboardLayoutToViewport, resolveKeyboardMetrics } =
+    load("layout/metrics.ts", ["fitKeyboardLayoutToViewport", "resolveKeyboardMetrics"],
+      { TOP_SURFACE_HEIGHT_MIN: 34 });
+  const layout = { keyboardBodyHeight: 258, topSurfaceHeight: 56, requestedHeight: 332 };
+  const geometry = {
+    t9LeftColumn: { min: 40, max: 200, fraction: 0.19 },
+    t9RightColumn: { min: 40, max: 90, fraction: 0.19 },
+    numericLeftColumn: { min: 35, max: 75, fraction: 0.17 },
+    numericRightColumn: { min: 35, max: 75, fraction: 0.17 }
+  };
+  assert.equal(fitKeyboardLayoutToViewport(layout, 0), layout);
+  assert.equal(fitKeyboardLayoutToViewport(layout, 400), layout);
+  for (const viewport of [180, 200, 240, 280, 320]) {
+    const fitted = fitKeyboardLayoutToViewport(layout, viewport);
+    const metrics = resolveKeyboardMetrics(390, fitted, geometry);
+    assert.ok(fitted.requestedHeight <= viewport, "height must fit the host");
+    assert.ok(metrics.candidateHeight >= 34, "candidate strip must remain present");
+    assert.ok(metrics.bodyHeight + metrics.candidateHeight + 12 <= viewport);
+  }
+});
+
+test("toolbar switch is persisted and does not change keyboard or candidate hit geometry", () => {
+  const source = relative => fs.readFileSync(path.join(root, relative), "utf8");
+  const rootSource = source("keyboard.tsx");
+  const settings = source("ui/settings/KeyboardSettingsPage.tsx");
+  const editor = source("ui/settings/ToolbarSettingsPage.tsx");
+  const runtime = source("keyboard/runtime/KeyboardRuntimeSettings.ts");
+  const bar = source("keyboard/components/CandidateBar.tsx");
+  assert.match(settings, /title="显示工具栏（性能对照）"/);
+  assert.match(settings, /toolbarPreferences = \{ \.\.\.current\.toolbarPreferences, showToolbar: value \}/);
+  assert.match(settings, /onChanged=\{changeShowToolbar\}/);
+  assert.match(editor, /toolbarPreferences: \{ \.\.\.current\.toolbarPreferences, items: currentIds \}/);
+  assert.match(runtime, /showToolbar: settings\.toolbarPreferences\.showToolbar/);
+  assert.match(rootSource, /const showToolbar = initialSettings\.showToolbar/);
+  // An unmounted subscriber cannot receive candidates if the root's
+  // candidate count is stale. Keep one live header independent of idle settings.
+  assert.doesNotMatch(rootSource, /shouldRenderKeyboardHeader\(\{/);
+  assert.match(rootSource, /<CandidateBarSubscriber[\s\S]*?showToolbar=\{showToolbar\}/);
+  assert.match(rootSource, /const layout = fitKeyboardLayoutToViewport\(props\.layout, measuredHeight\)/);
+  assert.match(rootSource, /alignment: "topLeading" as any/);
+  assert.match(bar, /Rime 暂无候选词/);
+  assert.match(bar, /工具栏已关闭（可在设置中开启）/);
+  assert.match(bar, /<ToolbarStrip/);
+  assert.match(bar, /props\.candidates\.slice\(0, 12\)/);
+  assert.match(rootSource, /CustomKeyboard\.setToolbarVisible\(false\)/);
+  assert.doesNotMatch(rootSource, /CustomKeyboard\.setToolbarVisible\(true\)/);
 });

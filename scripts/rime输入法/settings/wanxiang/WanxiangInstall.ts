@@ -1,4 +1,4 @@
-import { Crypto, Path, fetch } from "scripting";
+import { Path, fetch } from "scripting";
 import { sharedRimeDataDir } from "../../core/rime/SchemeCatalog";
 import {
   readWanxiangUpdaterMetadata,
@@ -103,7 +103,17 @@ async function downloadAsset(
   if (asset.digest) {
     try {
       if (!/^[a-f0-9]{64}$/i.test(asset.digest)) throw new Error("远端 SHA256 摘要无效");
-      const actualDigest = Crypto.sha256(await fm.readAsData(destination)).toHexString().toLowerCase();
+      const legacyCrypto = (globalThis as any).Crypto;
+      const nativeCrypto = (globalThis as any).crypto;
+      let actualDigest: string;
+      if (typeof legacyCrypto?.sha256 === "function") {
+        actualDigest = String(legacyCrypto.sha256(await fm.readAsData(destination)).toHexString()).toLowerCase();
+      } else if (typeof nativeCrypto?.subtle?.digest === "function") {
+        const digest = new Uint8Array(await nativeCrypto.subtle.digest("SHA-256", await fm.readAsBytes(destination)));
+        actualDigest = Array.from(digest, (value: number) => value.toString(16).padStart(2, "0")).join("");
+      } else {
+        throw new Error("当前 Scripting 不支持 SHA-256 校验，已拒绝安装未验证的文件");
+      }
       if (actualDigest !== asset.digest.toLowerCase()) throw new Error("下载文件 SHA256 校验失败");
     } catch (error) {
       await removeIfExists(destination);

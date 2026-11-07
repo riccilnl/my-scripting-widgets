@@ -30,7 +30,7 @@ export function ToolbarSettingsPage() {
     const current = readKeyboardSettings();
     if (!writeKeyboardSettings({
       ...current,
-      toolbarPreferences: { items: currentIds }
+      toolbarPreferences: { ...current.toolbarPreferences, items: currentIds }
     })) return;
 
     lastPersistedRef.current = currentSignature;

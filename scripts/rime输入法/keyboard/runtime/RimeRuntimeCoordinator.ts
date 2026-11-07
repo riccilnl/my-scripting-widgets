@@ -36,6 +36,16 @@ async function buildRuntime(request: RimeRuntimeRequest): Promise<RimeEngine> {
   }
   requireActive();
 
+  // Snapshot the documented engine-wide deployment flag only while tracing.
+  // This flag does not prove what work the native engine performs internally.
+  if (trace) {
+    const deploying = Rime.isDeploying;
+    if (typeof deploying === "boolean") {
+      trace.mark(deploying
+        ? "rime.deployStatus.beforeSchemas.busy"
+        : "rime.deployStatus.beforeSchemas.idle");
+    }
+  }
   trace?.mark("rime.schemas.begin");
   let runtimeSchemas = await Rime.listSchemas();
   trace?.mark("rime.schemas.end");
@@ -79,8 +89,25 @@ async function buildRuntime(request: RimeRuntimeRequest): Promise<RimeEngine> {
   const schemes = listRuntimeSupportedRimeSchemes(runtimeSchemas);
   trace?.mark("rime.schemaFilter.end");
   requireActive();
+  if (trace) {
+    const deploying = Rime.isDeploying;
+    if (typeof deploying === "boolean") {
+      trace.mark(deploying
+        ? "rime.deployStatus.beforeSession.busy"
+        : "rime.deployStatus.beforeSession.idle");
+    }
+  }
+
+  // Preserve the original rime.session.begin/end bracket for comparable reports.
+  // The native constructor is opaque: time includes the JS-to-native bridge,
+  // and cannot be subdivided into librime's internal operations here.
   trace?.mark("rime.session.begin");
-  const engine = new RimeEngine(new Rime.Session());
+  trace?.mark("rime.session.native.begin");
+  const nativeSession = new Rime.Session();
+  trace?.mark("rime.session.native.end");
+  trace?.mark("rime.session.wrap.begin");
+  const engine = new RimeEngine(nativeSession);
+  trace?.mark("rime.session.wrap.end");
   trace?.mark("rime.session.end");
 
   try {

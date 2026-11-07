@@ -18,6 +18,7 @@ import { resolveKeyboardHeaderMode } from "../toolbar/headerMode";
 
 type Props = {
   candidates: CandidateEntry[];
+  showToolbar: boolean;
   compositionActive: boolean;
   highlightedIndex: number;
   ready: boolean;
@@ -37,9 +38,13 @@ type Props = {
 export function CandidateBar(props: Props) {
   const status = props.error
     ? `Rime：${props.error}`
-    : props.ready
-    ? ""
-    : "Rime 初始化中…";
+    : !props.ready
+    ? "Rime 初始化中…"
+    : props.compositionActive && props.candidates.length === 0
+    ? "Rime 暂无候选词"
+    : !props.showToolbar
+    ? "工具栏已关闭（可在设置中开启）"
+    : "";
   const horizontalInset = props.skin.visuals.toolbarHorizontalInset;
   const edgeButtonWidth = props.skin.visuals.toolbarEdgeButtonWidth;
   const edgeSpacing = 0;
@@ -52,7 +57,7 @@ export function CandidateBar(props: Props) {
     compositionActive: props.compositionActive,
     candidateCount: props.candidates.length
   });
-  const toolbarMode = headerMode === "toolbar";
+  const toolbarMode = headerMode === "toolbar" && props.showToolbar;
   const rightButtonImage = hasCandidates
     ? props.expanded
       ? "chevron.up.circle"
@@ -128,6 +133,7 @@ export function CandidateBar(props: Props) {
                 candidateScrollProxyRef.current = proxy;
                 return (
                   <ScrollView
+                    scrollEdgeEffectHidden={true}
                     axes="horizontal"
                     scrollIndicator="hidden"
                     frame={{ width: centerWidth, height: props.height }}
@@ -180,7 +186,7 @@ export function CandidateBar(props: Props) {
                                   font={props.skin.typography.candidate.fontSize}
                                   foregroundStyle={(selected ? props.colors.candidateSelectedForeground : props.colors.candidateForeground) as any}
                                   lineLimit={1}
-                                  minimumScaleFactor={0.65}
+                                  minScaleFactor={0.65}
                                   allowsHitTesting={false}
                                 >
                                   {displayText}

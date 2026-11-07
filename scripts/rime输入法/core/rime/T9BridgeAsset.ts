@@ -17,11 +17,9 @@ local kPendingConsumeProperty = "t9_bridge_pending_consume"
 local kMenuPrepareLimit = 96
 local kOptionLimit = 48
 
--- Exact T9 mapping used only to VERIFY an already Rime-provided active-tail
--- pinyin label. It never enumerates labels from digits and contains no fuzzy
--- aliases. If selected pinyin no longer maps exactly onto the raw numeric
--- prefix (for example because abbreviation/fuzzy spelling is involved), the
--- fallback is disabled and the original 4.6 Rime-path logic remains in charge.
+-- Exact T9 spelling lookup. It validates the user's confirmed syllable offsets
+-- and derives legal left-column spelling choices if the live candidate menu is
+-- incomplete. It never generates Chinese candidates or changes Rime ranking.
 local T9_EXACT_DIGIT = {
   a = "2", b = "2", c = "2",
   d = "3", e = "3", f = "3",
@@ -57,10 +55,9 @@ local function active_numeric_input(context)
   local raw = tostring(context and context.input or "")
   if raw == "" or raw:match("^[2-9]+$") == nil then return nil end
 
-  -- Rime can keep the full raw input after a leading candidate has been
-  -- confirmed while composition:back() already points at the unresolved
-  -- segment. Left-column options come from that active segment menu, so their
-  -- digit verification must use the same segment-local raw slice.
+  -- Rime composition segment offsets are relative to context.input, not to
+  -- our confirmed-pinyin list. Keep both coordinates instead of discarding
+  -- the raw prefix and then consuming the same confirmed syllables twice.
   local ok, start = pcall(function()
     local composition = context and context.composition or nil
     if composition == nil or composition:empty() then return 0 end
@@ -68,30 +65,34 @@ local function active_numeric_input(context)
     if segment == nil then return 0 end
     return tonumber(segment.start or 0) or 0
   end)
-  if not ok then return raw end
+  if not ok then return raw, 0 end
   start = math.floor(tonumber(start or 0) or 0)
-  if start < 0 or start > #raw then return raw end
-  return raw:sub(start + 1)
+  if start < 0 or start > #raw then start = 0 end
+  return raw, start
 end
 
-local function exact_remaining_tail(context, selected)
-  local raw = active_numeric_input(context)
-  if raw == nil or raw == "" then return nil end
+local function selected_numeric_prefix(selected)
   local prefix = {}
   for _, syllable in ipairs(selected or {}) do
     local digits = exact_t9_digits(syllable)
     if digits == "" then return nil end
     prefix[#prefix + 1] = digits
   end
-  local joined = table.concat(prefix)
-  if joined == "" or raw:sub(1, #joined) ~= joined then return nil end
-  return raw:sub(#joined + 1)
+  return table.concat(prefix)
+end
+
+local function exact_remaining_tail(context, selected)
+  local raw, segment_start = active_numeric_input(context)
+  if raw == nil or raw == "" then return nil end
+  local joined = selected_numeric_prefix(selected)
+  if joined == nil or joined == "" or raw:sub(1, #joined) ~= joined then return nil end
+  return raw:sub(math.max(#joined, segment_start) + 1)
 end
 
 local function unresolved_tail(context, selected)
-  local raw = active_numeric_input(context)
+  local raw, segment_start = active_numeric_input(context)
   if raw == nil or raw == "" then return nil end
-  if selected == nil or #selected == 0 then return raw end
+  if selected == nil or #selected == 0 then return raw:sub(segment_start + 1) end
   return exact_remaining_tail(context, selected)
 end
 
@@ -127,12 +128,9 @@ local function option_prefix_for_tail(label, tail)
   return prefix, false
 end
 
--- Canonical Mandarin syllables serve two deliberately narrow purposes:
--- 1) parse compact pinyin strings already emitted by Rime;
--- 2) when the unresolved T9 tail is exactly ONE digit and Rime cannot expose
---    every initial yet, fill the left panel with legal Mandarin initials for
---    that digit (for example 5 -> j/k/l). This is display/selection metadata
---    only: ordinary digits, candidates, ranking and commits stay Rime-owned.
+-- The canonical spelling table serves parsing and a bounded left-column
+-- fallback independent of the currently materialized Rime candidate page.
+-- It never synthesizes Chinese candidates, commits or dictionary ranking.
 local PINYIN_PARSE_SYLLABLES = [[
 a ai an ang ao ba bai ban bang bao bei ben beng bi bian biao bie bin bing bo bu
 ca cai can cang cao ce cen ceng cha chai chan chang chao che chen cheng chi chong
@@ -160,6 +158,28 @@ zuan zui zun zuo
 
 local PINYIN_PARSE_SET = nil
 local SINGLE_DIGIT_INITIALS = nil
+local CANONICAL_BY_TWO_DIGITS = nil
+
+local function canonical_options_for_tail(tail)
+  if CANONICAL_BY_TWO_DIGITS == nil then
+    local by_pair = {}
+    local function register(pair, syllable)
+      if by_pair[pair] == nil then by_pair[pair] = {} end
+      by_pair[pair][#by_pair[pair] + 1] = syllable
+    end
+    for syllable in tostring(PINYIN_PARSE_SYLLABLES):gmatch("[a-zv]+") do
+      local spelling = exact_t9_digits(syllable)
+      if #spelling >= 2 then
+        register(spelling:sub(1, 2), syllable)
+      elseif #spelling == 1 then
+        -- A single-letter syllable can precede any second digit.
+        for digit = 2, 9 do register(spelling .. tostring(digit), syllable) end
+      end
+    end
+    CANONICAL_BY_TWO_DIGITS = by_pair
+  end
+  return CANONICAL_BY_TWO_DIGITS[tail:sub(1, 2)] or {}
+end
 
 local function pinyin_parse_set()
   if PINYIN_PARSE_SET ~= nil then return PINYIN_PARSE_SET end
@@ -358,11 +378,8 @@ local function collect_option_records(context)
     return result, candidate_count
   end
 
-  -- Xime/Hamster-style T9 frontends keep a first-syllable source independent
-  -- from whether the current Rime menu has already materialized candidates.
-  -- We only need the missing first-key capability here. Restrict the canonical
-  -- fallback to a one-digit unresolved tail so later/fuzzy/completion ordering
-  -- remains entirely sourced from the live Wanxiang menu.
+  -- Preserve the original one-digit initial behavior; for longer tails,
+  -- Rime-provided spellings keep their priority over canonical fallbacks.
   if #tail == 1 then
     for _, label in ipairs(single_digit_initials(tail)) do
       if starts_with_text(label, partial) then
@@ -376,10 +393,7 @@ local function collect_option_records(context)
     end
   end
 
-  if menu == nil or menu.get_candidate_at == nil then
-    return result, candidate_count
-  end
-
+  -- menu_candidate_count() returns zero for unavailable menus.
   for index = 0, candidate_count - 1 do
     local ok, candidate = pcall(function() return menu:get_candidate_at(index) end)
     if not ok or candidate == nil then break end
@@ -415,6 +429,27 @@ local function collect_option_records(context)
           -- A canonical single-key prefix becomes a completed option as soon
           -- as the live Rime menu exposes that same full syllable.
           if complete and label == syllable then existing.complete = true end
+        end
+      end
+    end
+  end
+
+  -- Rime may not have generated a whole-word candidate yet, or the only
+  -- compatible candidate may lie beyond kMenuPrepareLimit. Pinyin is still
+  -- selectable: derive legal, exact-code syllables, after the Rime-ranked ones.
+  -- Keep the same kOptionLimit and never infer a Chinese candidate from digits.
+  if #tail > 1 and #result < kOptionLimit then
+    for _, syllable in ipairs(canonical_options_for_tail(tail)) do
+      local label, complete = option_prefix_for_tail(syllable, tail)
+      if label ~= nil and starts_with_text(label, partial) then
+        local existing = by_label[label]
+        if existing == nil then
+          existing = { label = label, complete = complete }
+          by_label[label] = existing
+          result[#result + 1] = existing
+          if #result >= kOptionLimit then break end
+        elseif complete then
+          existing.complete = true
         end
       end
     end
@@ -455,11 +490,23 @@ local function reconcile_selected_from_rime(context)
     return
   end
   local selected = decode_selected(context)
+  local raw = active_numeric_input(context)
+  if raw ~= nil then
+    -- Exact numeric input makes the selected prefix independently verifiable.
+    -- Do not discard a legal selection only because the candidate menu has
+    -- not materialized a matching multi-syllable phrase. BackSpace that edits
+    -- a confirmed syllable rolls that syllable back deterministically.
+    while #selected > 0 do
+      local prefix = selected_numeric_prefix(selected)
+      if prefix ~= nil and raw:sub(1, #prefix) == prefix then return end
+      table.remove(selected)
+      write_selected(context, selected)
+      if not refresh_context(context) then return end
+    end
+    return
+  end
   while #selected > 0 do
     if menu_supports_selected(context, selected) then return end
-    -- A normal Rime edit (most commonly BackSpace) invalidated the latest
-    -- explicit choice. Roll back ONE selected syllable, ask Rime to recompose,
-    -- and let the new Rime menu decide whether the remaining prefix is valid.
     table.remove(selected)
     write_selected(context, selected)
     if not refresh_context(context) then return end

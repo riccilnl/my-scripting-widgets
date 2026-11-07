@@ -229,12 +229,37 @@ export class KeyboardEditController {
     } catch {}
   }
 
+  /**
+   * Clipboard calls cross the keyboard-extension boundary and may never
+   * complete. The text-action FIFO must not wait forever for Pasteboard.
+   * A timed-out operation is ignored on eventual late completion.
+   */
+  private async waitForClipboard<T>(operation: Promise<T> | T): Promise<{
+    completed: boolean;
+    value?: T;
+  }> {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        Promise.resolve(operation).then(
+          (value) => ({ completed: true, value }),
+          () => ({ completed: false })
+        ),
+        new Promise<{ completed: false }>((resolve) => {
+          timer = setTimeout(() => resolve({ completed: false }), 1200);
+        })
+      ]);
+    } finally {
+      if (timer != null) clearTimeout(timer);
+    }
+  }
+
   async copy(effects?: EditEffectPort) {
     try {
       const text = CustomKeyboard.selectedText ?? "";
       if (!text) return;
-      await Pasteboard.setString(text);
-      if (this.disposed) return;
+      const result = await this.waitForClipboard(Pasteboard.setString(text));
+      if (!result.completed || this.disposed) return;
       try { effects?.clipboardText?.(text); } catch {}
       this.clearForExternalAction();
     } catch {}
@@ -244,8 +269,8 @@ export class KeyboardEditController {
     try {
       const text = CustomKeyboard.selectedText ?? "";
       if (!text) return;
-      await Pasteboard.setString(text);
-      if (this.disposed) return;
+      const result = await this.waitForClipboard(Pasteboard.setString(text));
+      if (!result.completed || this.disposed) return;
       try { effects?.clipboardText?.(text); } catch {}
       this.deletedText = text;
       this.clearForExternalAction();
@@ -255,8 +280,9 @@ export class KeyboardEditController {
 
   async paste(effects?: EditEffectPort) {
     try {
-      const text = await Pasteboard.getString();
-      if (this.disposed || !text) return;
+      const result = await this.waitForClipboard(Pasteboard.getString());
+      const text = result.value;
+      if (!result.completed || this.disposed || !text) return;
       try { effects?.clipboardText?.(text); } catch {}
       this.insertTextReplacingSelectAll(text);
     } catch {}

@@ -110,6 +110,29 @@ export function resolveKeyboardLayout(
   };
 }
 
+/**
+ * The keyboard extension owns its actual viewport, not the requested height.
+ * Shrink its key rows if iOS gives less space so the candidate strip stays
+ * at the visible top instead of being centered above the clipped area.
+ */
+export function fitKeyboardLayoutToViewport(
+  layout: ResolvedKeyboardLayout,
+  measuredHeight: number
+): ResolvedKeyboardLayout {
+  if (!Number.isFinite(measuredHeight) || measuredHeight < 180 ||
+      measuredHeight >= layout.requestedHeight) return layout;
+  const budget = Math.floor(measuredHeight);
+  const fixedGap = KEYBOARD_METRICS.rowSpacing + KEYBOARD_METRICS.bottomPadding;
+  const topSurfaceHeight = Math.min(layout.topSurfaceHeight,
+    Math.max(TOP_SURFACE_HEIGHT_MIN, budget - 150 - fixedGap));
+  const keyboardBodyHeight = Math.max(124, budget - topSurfaceHeight - fixedGap);
+  return {
+    keyboardBodyHeight,
+    topSurfaceHeight,
+    requestedHeight: keyboardBodyHeight + topSurfaceHeight + fixedGap
+  };
+}
+
 export function resolveKeyboardMetrics(
   availableWidth: number,
   layout: ResolvedKeyboardLayout,

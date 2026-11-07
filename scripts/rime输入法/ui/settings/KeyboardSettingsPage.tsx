@@ -18,9 +18,9 @@ export function KeyboardSettingsPage() {
   const initial = readKeyboardSettings();
   const skin = resolveSkin(initial.skinId);
   const [showActionHints, setShowActionHints] = useState(initial.keyFacePreferences.showActionHints);
+  const [showToolbar, setShowToolbar] = useState(initial.toolbarPreferences.showToolbar);
   const [showSpaceLabel, setShowSpaceLabel] = useState(initial.keyFacePreferences.showSpaceLabel);
   const [spaceLabel, setSpaceLabel] = useState(initial.keyFacePreferences.spaceLabel);
-  const [hapticsEnabled, setHapticsEnabled] = useState(initial.feedbackPreferences.hapticsEnabled);
   const [keyPopupEnabled, setKeyPopupEnabled] = useState(initial.feedbackPreferences.keyPopupEnabled);
   const [customKeyboardHeight, setCustomKeyboardHeight] = useState(initial.layoutPreferences.keyboardBodyHeightOverride != null);
   const [keyboardHeight, setKeyboardHeight] = useState(
@@ -37,6 +37,13 @@ export function KeyboardSettingsPage() {
   }
 
 
+  function changeShowToolbar(value: boolean) {
+    const current = readKeyboardSettings();
+    const toolbarPreferences = { ...current.toolbarPreferences, showToolbar: value };
+    if (!persistKeyboardPatch({ toolbarPreferences })) return;
+    setShowToolbar(value);
+  }
+
   function changeShowActionHints(value: boolean) {
     const current = readKeyboardSettings();
     const keyFacePreferences = { ...current.keyFacePreferences, showActionHints: value };
@@ -51,12 +58,6 @@ export function KeyboardSettingsPage() {
     setShowSpaceLabel(value);
   }
 
-  function changeHapticsEnabled(value: boolean) {
-    const current = readKeyboardSettings();
-    const feedbackPreferences = { ...current.feedbackPreferences, hapticsEnabled: value };
-    if (!persistKeyboardPatch({ feedbackPreferences })) return;
-    setHapticsEnabled(value);
-  }
 
   function changeKeyPopupEnabled(value: boolean) {
     const current = readKeyboardSettings();
@@ -144,12 +145,13 @@ export function KeyboardSettingsPage() {
     <List navigationTitle="键盘设置" navigationBarTitleDisplayMode="inline">
       <Section
         header={<Text>输入反馈</Text>}
-        footer={<Text>按键预览只控制字符键按下时的放大预览，不影响震动、按压反馈或输入事务。</Text>}
+        footer={<Text>iOS 27.2 诊断版暂时关闭脚本触觉反馈，以排查延迟震动；原震动偏好已保留，按键预览和输入功能不受影响。</Text>}
       >
         <Toggle
-          title="按键震动反馈"
-          value={hapticsEnabled}
-          onChanged={changeHapticsEnabled}
+          title="按键震动反馈（诊断版暂停）"
+          value={false}
+          onChanged={() => {}}
+          disabled={true}
         />
         <Toggle
           title="按键预览 Popup"
@@ -200,8 +202,13 @@ export function KeyboardSettingsPage() {
 
       <Section
         header={<Text>动作与工具栏</Text>}
-        footer={<Text>按键动作使用内置默认并允许覆盖；工具栏最多显示 8 个编辑工具。</Text>}
+        footer={<Text>关闭时空闲工具栏不创建 UI 节点；输入中的候选栏仍显示，顶部空位和按键位置保持不变。重新唤起预览键盘生效，仅用于性能对照。</Text>}
       >
+        <Toggle
+          title="显示工具栏（性能对照）"
+          value={showToolbar}
+          onChanged={changeShowToolbar}
+        />
         <NavigationLink title="按键动作" destination={<KeyActionSettingsPage />} />
         <NavigationLink title="工具栏" destination={<ToolbarSettingsPage />} />
       </Section>
