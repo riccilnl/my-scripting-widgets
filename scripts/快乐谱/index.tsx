@@ -6,7 +6,7 @@ import {
 import { scoreURL, searchSongs, Song, titleOf, subtitleOf } from "./api"
 import { describeFailure, parseScoreProbe, probeScript, readerHTML, saveSvgFiles, ScoreProbe } from "./score"
 import {
-  clearMySheetToken, readMySheetSettings, saveMySheetSettings, saveToMySheet,
+  clearMySheetToken, readMySheetSettings, saveMySheetSettings, saveToMySheet, testMySheetConnection,
 } from "./mysheet"
 
 function errorMessage(error: unknown): string {
@@ -166,6 +166,18 @@ function MySheetSettingsPage() {
   const [token, setToken] = useState("")
   const [hasToken, setHasToken] = useState(current.hasToken)
   const [notice, setNotice] = useState("")
+  const [checking, setChecking] = useState(false)
+
+  async function checkConnection() {
+    if (checking) return
+    setChecking(true)
+    setNotice("正在检查 MySheet /api/songs…")
+    try {
+      const count = await testMySheetConnection()
+      setNotice("连接成功：已通过认证，曲库返回 " + count + " 首曲谱")
+    } catch (error) { setNotice("连接失败：" + errorMessage(error)) }
+    finally { setChecking(false) }
+  }
 
   function save() {
     try {
@@ -192,6 +204,8 @@ function MySheetSettingsPage() {
       <SecureField title="曲谱 API Token" prompt={hasToken ? "已保存；留空表示不变" : "粘贴曲谱 API Token"}
         value={token} onChanged={setToken} />
       <Button title="保存连接" systemImage="checkmark.circle" action={save} />
+      <Button title={checking ? "检查中…" : "测试已保存连接"} systemImage="network"
+        disabled={checking} action={() => void checkConnection()} />
       {hasToken ? <Button title="清除本机 Token" systemImage="trash" action={forget} /> : null}
       <Text font="caption" foregroundStyle="secondaryLabel" lineLimit={4}>
         云端填写 HTTPS 地址和 MYSHEET_API_TOKEN，不能填写管理员 Token。

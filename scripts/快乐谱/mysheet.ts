@@ -61,6 +61,21 @@ type SongRecord = { id: number; title: string; content_json: string }
 type LibraryItem = { id: number; title: string }
 type SaveResult = { id: number; alreadyExists: boolean }
 
+// Cloud gateways sometimes return an HTML login/error page with HTTP 200.
+// Detect that explicitly rather than leaking an unhelpful JSON Parse error.
+function describeHTTPResult(response: any, raw: string): Error | null {
+  const status = Number(response.status) || 0
+  const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase()
+  const html = /(?:^\s*<!doctype\s+html|^\s*<html|^\s*<)/i.test(raw) || contentType.includes("text/html")
+  if (html) {
+    const redirected = typeof response.redirected === "boolean" && response.redirected
+      ? "；已发生重定向" : ""
+    return new Error("MySheet API 返回 HTML（HTTP " + status + redirected +
+      "），不是曲谱 JSON。请检查云端 HTTPS 地址、Cloady 入口或额外的网页访问验证。")
+  }
+  return null
+}
+
 async function readJson<T>(url: string, options?: Record<string, unknown>): Promise<T> {
   const connection = mySheetConnection()
   if (!url.startsWith(connection.url + "/api/songs")) {
@@ -71,18 +86,41 @@ async function readJson<T>(url: string, options?: Record<string, unknown>): Prom
   try {
     response = await fetch(url, {
       timeout: 20, ...options,
-      headers: { ...requestedHeaders, ...connection.headers },
+      headers: { Accept: "application/json", ...requestedHeaders, ...connection.headers },
     })
   } catch {
-    // Don't include request options or credentials in errors/logs.
+    // Never include request options or credentials in errors/logs.
     throw new Error("无法连接 MySheet，请检查 HTTPS 地址及网络")
   }
+  // One body read on both success and failure. Never display raw HTML.
+  let raw: string
+  try { raw = await response.text() }
+  catch { throw new Error("MySheet HTTP " + response.status + "：无法读取服务器响应") }
+  const htmlProblem = describeHTTPResult(response, raw)
+  if (htmlProblem) throw htmlProblem
+  let data: any
+  try { data = JSON.parse(raw) }
+  catch { throw new Error("MySheet HTTP " + response.status +
+    "：服务端没有返回有效 JSON，请核对 HTTPS 地址是否指向 MySheet") }
   if (!response.ok) {
-    let detail = ""
-    try { detail = (await response.json())?.error || "" } catch { /* no JSON body */ }
-    throw new Error(`MySheet HTTP ${response.status}${detail ? "：" + detail : ""}`)
+    const detail = typeof data?.error === "string" ? data.error.slice(0, 120) : ""
+    if (response.status === 401) {
+      throw new Error("MySheet HTTP 401：曲谱 API Token 未设置、错误或已失效；请使用 MYSHEET_API_TOKEN")
+    }
+    if (response.status === 403) {
+      throw new Error("MySheet HTTP 403：访问被拒绝，请确认使用曲谱 Token 而非管理员 Token")
+    }
+    throw new Error("MySheet HTTP " + response.status + (detail ? "：" + detail : ""))
   }
-  return await response.json() as T
+  return data as T
+}
+
+// Read-only check, using the identical authenticated request path as saving.
+export async function testMySheetConnection(): Promise<number> {
+  const baseURL = mySheetConnection().url
+  const songs = await readJson<LibraryItem[]>(baseURL + "/api/songs")
+  if (!Array.isArray(songs)) throw new Error("MySheet /api/songs 未返回曲谱数组，请检查服务地址")
+  return songs.length
 }
 
 function verifiedRecord(record: SongRecord, uuid: string, dsl: string): boolean {

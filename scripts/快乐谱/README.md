@@ -1,4 +1,4 @@
-# 快乐谱 0.1.3 — MySheet 云端连接
+# 快乐谱 0.1.4 — MySheet 云端连接
 
 来自历史 0.1.2 MySheet 预览包，保留快乐谱搜索、SVG 阅读/保存、官方 DSL 捕获、UUID 去重以及写入后的严格回读验证。
 
@@ -10,3 +10,10 @@
 - 现有手机脚本不会因为 GitHub 仓库更新而自动收到这个版本：首次需要使用稳定安装链接安装/更新，然后由 `remoteResource` 检查后续版本。
 - 若服务的前端还有 Cloudflare Access，单纯 MySheet API Token 无法穿透 Access 登录；应使用未设 Access、但启用 MySheet 自有认证的 HTTPS 地址。
 - 未在真实 iPhone 上验证该版本；不要把构建测试结果等同于实际设备验收。
+
+## 0.1.4 云端诊断修复
+
+- 不改动快乐谱搜索、原生 DSL、MySheet API 或 Keychain 凭证。
+- 所有曲谱 API 统一按文本读取响应，再严格校验 JSON。若云端代理返回 HTML，显示 HTTP 状态及重定向提示，不再抛裸 JSON Parse error，且不显示 HTML 或 Bearer Token。
+- 连接设置新增只读「测试已保存连接」：GET /api/songs，报告曲谱数量或认证/路由错误；测试不会写入数据库。测试前应先按「保存连接」。
+- 以上诊断可区分 HTML 网页响应与真实 MySheet HTTP 401/403，但未在 Cloady 实例或真实 iPhone 上复现原始 HTML 来源。
