@@ -1,0 +1,27 @@
+{
+  "name": "快乐谱",
+  "version": "0.1.3",
+  "description": "快乐谱搜索、SVG 保存、原生 DSL 入库：MySheet HTTPS + 本机钥匙串认证",
+  "icon": "music.note.list",
+  "color": "rgba(39,129,110,1)",
+  "runInApp": true,
+  "entry": "index.tsx",
+  "author": {
+    "name": "Ricci",
+    "email": "",
+    "homepage": ""
+  },
+  "localizedNames": {
+    "zh": "快乐谱",
+    "en": "KuaiYuePu"
+  },
+  "localizedDescriptions": {
+    "zh": "搜索简谱，阅读或保存 SVG，并将官方 DSL 保存到 MySheet",
+    "en": "Search and view numbered musical notation in SVG"
+  },
+  "intentInputTypes": [],
+  "remoteResource": {
+    "url": "https://raw.githubusercontent.com/riccilnl/my-scripting-widgets/refs/heads/main/%E5%BF%AB%E4%B9%90%E8%B0%B1.scripting",
+    "autoUpdateInterval": 3600
+  }
+}
