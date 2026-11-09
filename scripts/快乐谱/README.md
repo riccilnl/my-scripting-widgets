@@ -1,4 +1,4 @@
-# 快乐谱 0.1.5 — MySheet 云端连接
+# 快乐谱 0.1.6 — MySheet 云端连接
 
 来自历史 0.1.2 MySheet 预览包，保留快乐谱搜索、SVG 阅读/保存、官方 DSL 捕获、UUID 去重以及写入后的严格回读验证。
 
@@ -21,3 +21,10 @@
 ## 0.1.5
 
 恢复 Scripting `Response.json()` 读取，保留 HTML / 401 诊断；按读取列表、检查曲谱 ID、写入和回读阶段提示错误。MySheet 的 DSL 与 Token 管理方式不变。手机端尚未验收。
+
+## v0.1.6 UUID 查重优化
+
+- 云端 MySheet 新版支持 `GET /api/songs?source_provider=kuaiyuepu&source_uuid=<uuid>`，返回 `lookup=source_uuid_v1` 和全量命中记录；大幅减少手机连续查询请求数。
+- 云端旧版会忽略查询参数并返回旧列表，脚本自动使用严格逐首查重，避免漏查重复 UUID。旧版仅对安全的 GET 请求进行最多 3 次重试；POST 不自动重试。
+- 无需重新输入 MySheet 地址或曲谱 Token；保留原生 DSL 字节一致性核查和写入后回读。
+- 新接口必须先将 MySheet 服务端部署到 Cloady，单独更新此脚本不能让旧服务器具备新能力。

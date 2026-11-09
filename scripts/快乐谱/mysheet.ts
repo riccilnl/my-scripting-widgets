@@ -60,10 +60,12 @@ function mySheetConnection(): { url: string; headers: Record<string, string> } {
 type SongRecord = { id: number; title: string; content_json: string }
 type LibraryItem = { id: number; title: string }
 type SaveResult = { id: number; alreadyExists: boolean }
+type SourceLookup = { lookup: "source_uuid_v1"; matches: SongRecord[] }
 
 // Cloud gateways sometimes return an HTML login/error page with HTTP 200.
 // Detect that explicitly rather than leaking an unhelpful JSON Parse error.
 // Use the native JSON reader; Scripting response.text() failed in v0.1.4.
+// GET is read-only and may be retried. POST must never be retried blindly.
 async function readJson<T>(
   url: string, options?: Record<string, unknown>, stage: string = "曲谱 API 请求",
 ): Promise<T> {
@@ -72,19 +74,30 @@ async function readJson<T>(
     throw new Error("MySheet 请求路径不符合限定的曲谱 API")
   }
   const requestedHeaders = (options?.headers || {}) as Record<string, string>
+  const method = String(options?.method || "GET").toUpperCase()
+  const maxAttempts = method === "GET" ? 3 : 1
   let response: any
-  try {
-    response = await fetch(url, {
-      timeout: 20, ...options,
-      headers: { Accept: "application/json", ...requestedHeaders, ...connection.headers },
-    })
-  } catch {
-    throw new Error(stage + "：连接 MySheet 失败，请检查网络")
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      response = await fetch(url, {
+        timeout: 25, ...options,
+        headers: { Accept: "application/json", ...requestedHeaders, ...connection.headers },
+        debugLabel: "快乐谱 MySheet：" + stage,
+      })
+      break
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        const kind = error instanceof Error ? error.name : "NetworkError"
+        throw new Error(stage + "：网络请求失败（" + kind + "；尝试 " + attempt +
+          " 次）。连接测试成功不代表连续请求一定成功；请优先更新云端 MySheet 的 UUID 查询接口")
+      }
+      await new Promise<void>(resolve => setTimeout(resolve, attempt * 500))
+    }
   }
   const mime = String(response.headers?.get?.("content-type") || response.mimeType || "").toLowerCase()
   if (mime.includes("text/html")) {
     throw new Error(stage + "：MySheet 返回 HTML（HTTP " + response.status +
-      "），请检查云端入口和额外访问验证")
+      "），请检查云端入口或额外访问验证")
   }
   let data: any
   try { data = await response.json() }
@@ -138,15 +151,39 @@ export async function saveToMySheet(song: Song, probe: ScoreProbe): Promise<Save
       fidelity: "original native DSL; no simplification",
     },
   }
-  // Check source UUID before writing. Never overwrite a different arrangement.
+  // New MySheet responds with an exact UUID lookup envelope in one request.
+  // Older MySheet returns the legacy list array to the same URL; preserve the
+  // strict per-song fallback until Cloady has been redeployed.
   const baseURL = mySheetConnection().url
-  const library = await readJson<LibraryItem[]>(baseURL + "/api/songs", undefined, "读取曲库")
-  if (!Array.isArray(library)) throw new Error("MySheet 曲库接口格式异常")
-  for (const row of library) {
-    const existing = await readJson<SongRecord>(baseURL + "/api/songs/" + row.id, undefined, "检查曲谱 ID " + row.id)
-    let source: any
-    try { source = JSON.parse(existing.content_json)?.source } catch { continue }
-    if (source?.provider === "kuaiyuepu" && source?.uuid === uuid) {
+  const lookupURL = baseURL + "/api/songs?source_provider=kuaiyuepu&source_uuid=" + encodeURIComponent(uuid)
+  const lookup = await readJson<SourceLookup | LibraryItem[]>(lookupURL, undefined, "按来源 UUID 查重")
+  if (Array.isArray(lookup)) {
+    // Legacy server: never assume an unmatched title means an unmatched UUID.
+    for (const row of lookup) {
+      if (!Number.isSafeInteger(row.id) || row.id <= 0) {
+        throw new Error("旧版 MySheet 返回无效曲谱 ID；已停止保存")
+      }
+      const existing = await readJson<SongRecord>(
+        baseURL + "/api/songs/" + row.id, undefined, "旧版逐首查重 ID " + row.id,
+      )
+      let source: any
+      try { source = JSON.parse(existing.content_json)?.source } catch { continue }
+      if (source?.provider === "kuaiyuepu" && source?.uuid === uuid) {
+        if (!verifiedRecord(existing, uuid, dsl)) {
+          throw new Error("曲库已有同 UUID 但 DSL 不一致的版本，未覆盖原有曲谱")
+        }
+        return { id: existing.id, alreadyExists: true }
+      }
+    }
+  } else {
+    if (lookup?.lookup !== "source_uuid_v1" || !Array.isArray(lookup.matches)) {
+      throw new Error("MySheet UUID 查询响应结构异常；停止写入以避免重复曲谱")
+    }
+    if (lookup.matches.length > 1) {
+      throw new Error("MySheet 已存在多首相同来源 UUID 曲谱；停止保存，请检查重复数据")
+    }
+    if (lookup.matches.length === 1) {
+      const existing = lookup.matches[0]
       if (!verifiedRecord(existing, uuid, dsl)) {
         throw new Error("曲库已有同 UUID 但 DSL 不一致的版本，未覆盖原有曲谱")
       }
