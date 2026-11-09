@@ -1,6 +1,6 @@
 {
   "name": "快乐谱",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "快乐谱搜索、SVG 保存、原生 DSL 入库：MySheet HTTPS + 本机钥匙串认证",
   "icon": "music.note.list",
   "color": "rgba(39,129,110,1)",

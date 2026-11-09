@@ -63,20 +63,10 @@ type SaveResult = { id: number; alreadyExists: boolean }
 
 // Cloud gateways sometimes return an HTML login/error page with HTTP 200.
 // Detect that explicitly rather than leaking an unhelpful JSON Parse error.
-function describeHTTPResult(response: any, raw: string): Error | null {
-  const status = Number(response.status) || 0
-  const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase()
-  const html = /(?:^\s*<!doctype\s+html|^\s*<html|^\s*<)/i.test(raw) || contentType.includes("text/html")
-  if (html) {
-    const redirected = typeof response.redirected === "boolean" && response.redirected
-      ? "；已发生重定向" : ""
-    return new Error("MySheet API 返回 HTML（HTTP " + status + redirected +
-      "），不是曲谱 JSON。请检查云端 HTTPS 地址、Cloady 入口或额外的网页访问验证。")
-  }
-  return null
-}
-
-async function readJson<T>(url: string, options?: Record<string, unknown>): Promise<T> {
+// Use the native JSON reader; Scripting response.text() failed in v0.1.4.
+async function readJson<T>(
+  url: string, options?: Record<string, unknown>, stage: string = "曲谱 API 请求",
+): Promise<T> {
   const connection = mySheetConnection()
   if (!url.startsWith(connection.url + "/api/songs")) {
     throw new Error("MySheet 请求路径不符合限定的曲谱 API")
@@ -89,28 +79,24 @@ async function readJson<T>(url: string, options?: Record<string, unknown>): Prom
       headers: { Accept: "application/json", ...requestedHeaders, ...connection.headers },
     })
   } catch {
-    // Never include request options or credentials in errors/logs.
-    throw new Error("无法连接 MySheet，请检查 HTTPS 地址及网络")
+    throw new Error(stage + "：连接 MySheet 失败，请检查网络")
   }
-  // One body read on both success and failure. Never display raw HTML.
-  let raw: string
-  try { raw = await response.text() }
-  catch { throw new Error("MySheet HTTP " + response.status + "：无法读取服务器响应") }
-  const htmlProblem = describeHTTPResult(response, raw)
-  if (htmlProblem) throw htmlProblem
+  const mime = String(response.headers?.get?.("content-type") || response.mimeType || "").toLowerCase()
+  if (mime.includes("text/html")) {
+    throw new Error(stage + "：MySheet 返回 HTML（HTTP " + response.status +
+      "），请检查云端入口和额外访问验证")
+  }
   let data: any
-  try { data = JSON.parse(raw) }
-  catch { throw new Error("MySheet HTTP " + response.status +
-    "：服务端没有返回有效 JSON，请核对 HTTPS 地址是否指向 MySheet") }
+  try { data = await response.json() }
+  catch {
+    throw new Error(stage + "：MySheet 响应无法解析为 JSON（HTTP " +
+      response.status + "），请检查接口响应或 Scripting 网络日志")
+  }
   if (!response.ok) {
+    if (response.status === 401) throw new Error(stage + "：HTTP 401，曲谱 API Token 无效或缺失")
+    if (response.status === 403) throw new Error(stage + "：HTTP 403，请检查曲谱 Token 或访问限制")
     const detail = typeof data?.error === "string" ? data.error.slice(0, 120) : ""
-    if (response.status === 401) {
-      throw new Error("MySheet HTTP 401：曲谱 API Token 未设置、错误或已失效；请使用 MYSHEET_API_TOKEN")
-    }
-    if (response.status === 403) {
-      throw new Error("MySheet HTTP 403：访问被拒绝，请确认使用曲谱 Token 而非管理员 Token")
-    }
-    throw new Error("MySheet HTTP " + response.status + (detail ? "：" + detail : ""))
+    throw new Error(stage + "：MySheet HTTP " + response.status + (detail ? "：" + detail : ""))
   }
   return data as T
 }
@@ -154,10 +140,10 @@ export async function saveToMySheet(song: Song, probe: ScoreProbe): Promise<Save
   }
   // Check source UUID before writing. Never overwrite a different arrangement.
   const baseURL = mySheetConnection().url
-  const library = await readJson<LibraryItem[]>(baseURL + "/api/songs")
+  const library = await readJson<LibraryItem[]>(baseURL + "/api/songs", undefined, "读取曲库")
   if (!Array.isArray(library)) throw new Error("MySheet 曲库接口格式异常")
   for (const row of library) {
-    const existing = await readJson<SongRecord>(baseURL + "/api/songs/" + row.id)
+    const existing = await readJson<SongRecord>(baseURL + "/api/songs/" + row.id, undefined, "检查曲谱 ID " + row.id)
     let source: any
     try { source = JSON.parse(existing.content_json)?.source } catch { continue }
     if (source?.provider === "kuaiyuepu" && source?.uuid === uuid) {
@@ -174,12 +160,12 @@ export async function saveToMySheet(song: Song, probe: ScoreProbe): Promise<Save
       title, artist, key, time_signature: timeSignature,
       content_json: JSON.stringify(content),
     }),
-  })
+  }, "写入新曲谱")
   if (!Number.isSafeInteger(record?.id) || record.id <= 0) {
     throw new Error("MySheet 未返回有效歌曲 ID，无法确认入库")
   }
   // A successful HTTP 201 alone is insufficient: read SQLite-backed API back.
-  const persisted = await readJson<SongRecord>(baseURL + "/api/songs/" + record.id)
+  const persisted = await readJson<SongRecord>(baseURL + "/api/songs/" + record.id, undefined, "回读曲谱 ID " + record.id)
   if (!verifiedRecord(persisted, uuid, dsl)) {
     throw new Error("写入后回读的原生 DSL 不一致，请检查服务器数据")
   }
